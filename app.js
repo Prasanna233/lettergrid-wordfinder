@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=2');
+  const worker = new Worker('solver.worker.js?v=3');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -273,7 +273,11 @@
   $('#minLen').addEventListener('change', e => { settings.minLen = +e.target.value; if (settings.maxLen < settings.minLen) settings.maxLen = settings.minLen; saveSettings(); syncControls(); });
   $('#maxLen').addEventListener('change', e => { settings.maxLen = +e.target.value; if (settings.minLen > settings.maxLen) settings.minLen = settings.maxLen; saveSettings(); syncControls(); });
   $('#sortSel').addEventListener('change', e => { settings.sort = e.target.value; saveSettings(); renderResults(true); });
-  $('#filterInput').addEventListener('input', () => renderResults(true));
+  for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).addEventListener('input', () => renderResults(true));
+  $('#clearFilters').addEventListener('click', () => {
+    for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).value = '';
+    settings.fCuts = settings.fReaches = false; saveSettings(); renderResults(true);
+  });
 
   $('#solveBtn').addEventListener('click', () => {
     if (!grid || !dictReady) return;
@@ -287,9 +291,13 @@
   });
 
   // ---------------- results ----------------
+  function textFilter(sel) { return $(sel).value.toUpperCase().replace(/[^A-Z]/g, ''); }
   function sorted() {
     const f = $('#filterInput').value.trim().toUpperCase();
     let list = results;
+    const sw = textFilter('#startsInput'), ew = textFilter('#endsInput');
+    if (sw) list = list.filter(r => r.word.startsWith(sw));
+    if (ew) list = list.filter(r => r.word.endsWith(ew));
     if (settings.fCuts) list = list.filter(r => r.cuts > 0);
     if (settings.fReaches) list = list.filter(r => r.reaches);
     if (f) {
@@ -321,7 +329,8 @@
     saveSettings(); renderResults(true);
   });
   function renderResults(reset) {
-    if (reset) { syncChips(); view = sorted(); const filtered = settings.fCuts || settings.fReaches || $('#filterInput').value.trim();
+    if (reset) { syncChips(); view = sorted(); const filtered = settings.fCuts || settings.fReaches || $('#filterInput').value.trim() || textFilter('#startsInput') || textFilter('#endsInput');
+      $('#clearFilters').hidden = !filtered;
       $('#resTitle').textContent = (filtered ? `${view.length.toLocaleString()} of ${lastTotal.toLocaleString()}` : lastTotal.toLocaleString()) + ' words' + (lastTimedOut ? ' (time limit hit)' : ''); view = sorted(); shown = 0; openIdx = -1; $('#results').innerHTML = ''; }
     const ol = $('#results');
     const end = Math.min(view.length, shown + 150);
