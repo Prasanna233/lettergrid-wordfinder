@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <header class="top">
@@ -76,8 +76,12 @@
         <option value="alpha">A–Z</option>
       </select>
     </div>
+    <div class="chips" id="chips">
+      <button class="chip" data-f="cuts" aria-pressed="false">✂ Cuts through opponent <span class="cnt"></span></button>
+      <button class="chip" data-f="reaches" aria-pressed="false">🏁 Reaches opponent end <span class="cnt"></span></button>
+    </div>
     <input id="filterInput" class="filter" type="search" placeholder="Filter, e.g. RAD or *ING" autocapitalize="characters" autocomplete="off" spellcheck="false">
-    <p class="score-help">Score = 2×cells gained + stolen + 4×rows advanced + length. 🏁 = connects to opponent's home row. ★ = uses a capture tile.</p>
+    <p class="score-help">Score = 2×cells gained + stolen + 4×rows advanced + length. 🏁 = connects to opponent's home row. ✂ = cuts through opponent letters. ★ = uses a capture tile.</p>
     <ol id="results" class="results"></ol>
     <button id="moreBtn" class="ghost" hidden>Show more</button>
   </section>
@@ -100,7 +104,7 @@
 </div>
 
 <canvas id="work" hidden></canvas>
-<script src="reader.js"></script>
-<script src="app.js"></script>
+<script src="reader.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

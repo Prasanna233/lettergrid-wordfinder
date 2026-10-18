@@ -119,14 +119,16 @@ function solve(grid, opts) {
       if (!mine[i]) gained.add(i);
       if (white[i]) { whiteHits++; for (const j of nbrs[i]) if (!mine[j]) gained.add(j); }
     }
-    let stolen = 0;
+    let stolen = 0, cuts = 0;
     for (const i of gained) if (opp[i]) stolen++;
+    // path cells that are opponent-captured letters (not their home row)
+    for (const i of path) if (opp[i] && Math.floor(i / cols) !== oppHomeRow) cuts++;
     const after = connectedDepth(i => mine[i] === 1 || gained.has(i));
     const depthGain = Math.max(0, after.depth - curDepth);
     const reaches = after.reaches;
     const len = path.length;
     const s = gained.size * 2 + stolen + depthGain * 4 + len + (reaches ? 1000 : 0);
-    return { gained: gained.size, stolen, depthGain, whiteHits, reaches, score: s };
+    return { gained: gained.size, stolen, cuts, depthGain, whiteHits, reaches, score: s };
   }
 
   function record(node) {

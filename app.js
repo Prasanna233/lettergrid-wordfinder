@@ -7,17 +7,18 @@
   let templates = null;
   let grid = null; // { rows, cols, letters[], state[], conf[], topColor, myColor, myHome }
   let settings = loadSettings();
+  let lastTotal = 0, lastTimedOut = false;
   let results = [], shown = 0, openIdx = -1, editIdx = -1;
   let dictReady = false;
 
   function loadSettings() {
-    const def = { start: 'mine', minLen: 4, maxLen: 20, sort: 'score' };
+    const def = { start: 'mine', minLen: 4, maxLen: 20, sort: 'score', fCuts: false, fReaches: false };
     try { return Object.assign(def, JSON.parse(localStorage.getItem('gwf-settings') || '{}')); } catch (e) { return def; }
   }
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js');
+  const worker = new Worker('solver.worker.js?v=2');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -30,7 +31,7 @@
       results = m.results;
       $('#solveBtn').textContent = 'Find words';
       updateSolveBtn();
-      $('#resTitle').textContent = `${m.total.toLocaleString()} words` + (m.timedOut ? ' (time limit hit)' : '');
+      lastTotal = m.total; lastTimedOut = m.timedOut;
       renderResults(true);
       $('#resultsCard').hidden = false;
       $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -281,7 +282,7 @@
     worker.postMessage({
       type: 'solve', id: solveId,
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: settings.minLen, maxLen: settings.maxLen, start: settings.start, limit: 8000 },
+      opts: { minLen: settings.minLen, maxLen: settings.maxLen, start: settings.start, limit: 20000 },
     });
   });
 
@@ -289,6 +290,8 @@
   function sorted() {
     const f = $('#filterInput').value.trim().toUpperCase();
     let list = results;
+    if (settings.fCuts) list = list.filter(r => r.cuts > 0);
+    if (settings.fReaches) list = list.filter(r => r.reaches);
     if (f) {
       const re = new RegExp('^' + f.replace(/[^A-Z*?]/g, '').replace(/\?/g, '.').replace(/\*/g, '.*') + (f.includes('*') ? '$' : ''));
       list = list.filter(r => (f.includes('*') ? re.test(r.word) : r.word.includes(f.replace(/[^A-Z]/g, ''))));
@@ -304,8 +307,22 @@
     return list.slice().sort(cmp);
   }
   let view = [];
+  function syncChips() {
+    const n = { cuts: results.filter(r => r.cuts > 0).length, reaches: results.filter(r => r.reaches).length };
+    document.querySelectorAll('#chips .chip').forEach(b => {
+      const f = b.dataset.f, on = f === 'cuts' ? settings.fCuts : settings.fReaches;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.querySelector('.cnt').textContent = results.length ? n[f].toLocaleString() : '';
+    });
+  }
+  $('#chips').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    if (b.dataset.f === 'cuts') settings.fCuts = !settings.fCuts; else settings.fReaches = !settings.fReaches;
+    saveSettings(); renderResults(true);
+  });
   function renderResults(reset) {
-    if (reset) { view = sorted(); shown = 0; openIdx = -1; $('#results').innerHTML = ''; }
+    if (reset) { syncChips(); view = sorted(); const filtered = settings.fCuts || settings.fReaches || $('#filterInput').value.trim();
+      $('#resTitle').textContent = (filtered ? `${view.length.toLocaleString()} of ${lastTotal.toLocaleString()}` : lastTotal.toLocaleString()) + ' words' + (lastTimedOut ? ' (time limit hit)' : ''); view = sorted(); shown = 0; openIdx = -1; $('#results').innerHTML = ''; }
     const ol = $('#results');
     const end = Math.min(view.length, shown + 150);
     const frag = document.createDocumentFragment();
@@ -314,13 +331,13 @@
       const li = document.createElement('li');
       li.dataset.k = k;
       const w = r.word.split('').map((ch, idx) => (r.wild.includes(idx) ? `<span class="wl">${ch}</span>` : ch)).join('');
-      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '🏁' : ''}${r.whiteHits ? '★' : ''}<span class="len-b">${r.len}</span><span class="sc">${r.reaches ? r.score - 1000 : r.score}</span></span></div>`;
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '🏁' : ''}${r.cuts ? '✂' : ''}${r.whiteHits ? '★' : ''}<span class="len-b">${r.len}</span><span class="sc">${r.reaches ? r.score - 1000 : r.score}</span></span></div>`;
       frag.appendChild(li);
     }
     ol.appendChild(frag);
     shown = end;
     $('#moreBtn').hidden = shown >= view.length;
-    if (!view.length) ol.innerHTML = '<li class="hint" style="padding:12px 0">No words found with these settings. Try “Next to them” or “Anywhere”.</li>';
+    if (!view.length) ol.innerHTML = '<li class="hint" style="padding:12px 0">No words match. Try turning off a filter, or “Next to them” / “Anywhere”.</li>';
   }
   $('#moreBtn').addEventListener('click', () => renderResults(false));
   $('#results').addEventListener('click', e => {
@@ -334,7 +351,7 @@
     det.appendChild(miniBoard(r));
     const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
     det.insertAdjacentHTML('beforeend', `<div class="facts">
-      <span>Cells gained <b>${r.gained}</b></span><span>Stolen <b>${r.stolen}</b></span>
+      <span>Cells gained <b>${r.gained}</b></span><span>Stolen <b>${r.stolen}</b></span>${r.cuts ? `<span>Cuts through <b>${r.cuts}</b> opponent letter${r.cuts > 1 ? 's' : ''}</span>` : ''}
       <span>Rows advanced <b>${r.depthGain}</b></span>${r.whiteHits ? `<span>Capture tiles <b>${r.whiteHits}</b></span>` : ''}
       ${r.reaches ? '<span><b>🏁 Connects to opponent row</b></span>' : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
     li.appendChild(det);
