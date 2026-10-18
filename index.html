@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161616">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Grid Word Finder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="sq o">W</span><span class="sq b">F</span><h1>Grid Word Finder</h1></div>
+  <div id="dictStatus" class="pill">Loading dictionary…</div>
+</header>
+
+<main>
+  <section class="card" id="loadCard">
+    <label class="big-btn" for="fileInput">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      Choose screenshot
+    </label>
+    <input id="fileInput" type="file" accept="image/*" hidden>
+    <div class="row-btns">
+      <button id="blankBtn" class="ghost">Type grid manually</button>
+    </div>
+    <p class="hint">Tip: on desktop you can also paste (Ctrl/⌘+V) a screenshot.</p>
+    <p id="readMsg" class="msg" hidden></p>
+  </section>
+
+  <section class="card" id="boardCard" hidden>
+    <div class="card-head">
+      <h2>Board</h2>
+      <span class="sub">Tap a cell to fix it</span>
+    </div>
+    <div class="legend">
+      <span><i class="lg mine"></i>Mine</span><span><i class="lg opp"></i>Opponent</span><span><i class="lg white"></i>Capture tile</span><span><i class="lg low"></i>Check</span>
+    </div>
+    <div id="board" class="board"></div>
+
+    <div class="controls">
+      <div class="ctl">
+        <span class="lbl">My side</span>
+        <div class="seg" id="sideSeg">
+          <button data-v="top">Top</button><button data-v="bottom">Bottom</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Word starts</span>
+        <div class="seg" id="startSeg">
+          <button data-v="mine">On my cells</button><button data-v="adjacent">Next to them</button><button data-v="anywhere">Anywhere</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Length</span>
+        <div class="len">
+          <select id="minLen"></select><span>to</span><select id="maxLen"></select><span>letters</span>
+        </div>
+      </div>
+      <button id="solveBtn" class="primary">Find words</button>
+    </div>
+  </section>
+
+  <section class="card" id="resultsCard" hidden>
+    <div class="card-head">
+      <h2 id="resTitle">Words</h2>
+      <select id="sortSel" aria-label="Sort">
+        <option value="score">Best move</option>
+        <option value="len">Longest</option>
+        <option value="gained">Most cells</option>
+        <option value="depth">Deepest push</option>
+        <option value="alpha">A–Z</option>
+      </select>
+    </div>
+    <input id="filterInput" class="filter" type="search" placeholder="Filter, e.g. RAD or *ING" autocapitalize="characters" autocomplete="off" spellcheck="false">
+    <p class="score-help">Score = 2×cells gained + stolen + 4×rows advanced + length. 🏁 = connects to opponent's home row. ★ = uses a capture tile.</p>
+    <ol id="results" class="results"></ol>
+    <button id="moreBtn" class="ghost" hidden>Show more</button>
+  </section>
+</main>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-inner" role="dialog" aria-label="Edit cell">
+    <div class="sheet-head"><b id="sheetTitle">Cell</b><button id="sheetClose" class="x" aria-label="Close">✕</button></div>
+    <div class="sheet-letter">
+      <input id="letterInput" maxlength="1" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="text" aria-label="Letter">
+      <button id="wildBtn" class="ghost">🤔 Wildcard</button>
+      <button id="clearBtn" class="ghost">Empty</button>
+    </div>
+    <span class="lbl">Cell type</span>
+    <div class="seg" id="stateSeg">
+      <button data-v=".">Free</button><button data-v="mine">Mine</button><button data-v="opp">Opponent</button><button data-v="W">Capture</button>
+    </div>
+    <button id="sheetDone" class="primary">Done</button>
+  </div>
+</div>
+
+<canvas id="work" hidden></canvas>
+<script src="reader.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
