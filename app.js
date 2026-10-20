@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=3');
+  const worker = new Worker('solver.worker.js?v=4');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -120,19 +120,66 @@
     });
   }
 
+  // ---------------- manual board / board size ----------------
+  const LIMITS = { cols: [4, 15], rows: [4, 20] };
+  const size = { cols: settings.boardCols || 10, rows: settings.boardRows || 13 };
+  function syncSize() {
+    $('#colsOut').textContent = size.cols; $('#rowsOut').textContent = size.rows;
+    document.querySelectorAll('[data-step]').forEach(b => {
+      const k = b.dataset.step, d = +b.dataset.d;
+      b.disabled = d < 0 ? size[k] <= LIMITS[k][0] : size[k] >= LIMITS[k][1];
+    });
+    $('#resizeBtn').disabled = !grid || (grid.rows === size.rows && grid.cols === size.cols);
+  }
+  document.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', e => {
+    e.preventDefault();
+    const k = b.dataset.step;
+    size[k] = Math.max(LIMITS[k][0], Math.min(LIMITS[k][1], size[k] + +b.dataset.d));
+    settings.boardCols = size.cols; settings.boardRows = size.rows; saveSettings();
+    syncSize();
+  }));
+  $('#manualBox').addEventListener('toggle', () => {
+    if ($('#manualBox').open && grid) { size.cols = grid.cols; size.rows = grid.rows; }
+    syncSize();
+  });
+  syncSize();
+
+  function blankGrid(rows, cols, topColor, myColor, myHome) {
+    const n = rows * cols;
+    const g = { rows, cols, letters: new Array(n).fill(''), state: new Array(n).fill('.'), conf: new Array(n).fill(1), topColor, myColor, myHome };
+    for (let c = 0; c < cols; c++) { g.state[c] = topColor; g.state[(rows - 1) * cols + c] = other(topColor); }
+    return g;
+  }
+
   $('#blankBtn').addEventListener('click', () => {
-    const rows = 13, cols = 10, n = rows * cols;
-    grid = { rows, cols, letters: new Array(n).fill(''), state: new Array(n).fill('.'), conf: new Array(n).fill(1), topColor: 'O', myColor: 'O', myHome: 'top' };
-    for (let c = 0; c < cols; c++) { grid.state[c] = 'O'; grid.state[(rows - 1) * cols + c] = 'B'; }
-    showMsg('Blank 10×13 board. Tap each cell to type its letter.');
+    grid = blankGrid(size.rows, size.cols, 'O', 'O', 'top');
+    showMsg(`Blank ${size.cols}×${size.rows} board. Tap each cell to type its letter — it moves to the next cell as you type.`);
     afterGridLoaded();
-    openEditor(cols);
+    openEditor(size.cols);
+  });
+
+  // keeps the top home row on top, the bottom home row at the bottom, and middle rows from the top down
+  $('#resizeBtn').addEventListener('click', () => {
+    if (!grid) return;
+    const old = grid, g = blankGrid(size.rows, size.cols, old.topColor, old.myColor, old.myHome);
+    for (let r = 0; r < g.rows; r++) {
+      const sr = r === g.rows - 1 ? old.rows - 1 : (r < old.rows - 1 ? r : -1);
+      if (sr < 0) continue;
+      for (let c = 0; c < Math.min(g.cols, old.cols); c++) {
+        const s = sr * old.cols + c, d = r * g.cols + c;
+        g.letters[d] = old.letters[s]; g.state[d] = old.state[s]; g.conf[d] = old.conf[s];
+      }
+    }
+    grid = g;
+    showMsg(`Board resized to ${g.cols}×${g.rows}. New cells are blank — tap them to fill in letters.`);
+    afterGridLoaded();
   });
 
   function afterGridLoaded() {
     results = []; openIdx = -1;
     $('#boardCard').hidden = false;
     $('#resultsCard').hidden = true;
+    size.cols = grid.cols; size.rows = grid.rows; syncSize();
     syncControls();
     renderMainBoard();
     $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -160,7 +207,7 @@
 
   function renderMainBoard() {
     const b = $('#board');
-    b.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`;
+    b.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; b.style.setProperty('--cols', grid.cols);
     b.innerHTML = '';
     for (let i = 0; i < grid.rows * grid.cols; i++) {
       const d = document.createElement('div');
@@ -177,7 +224,7 @@
   function miniBoard(res) {
     const wrap = document.createElement('div');
     wrap.className = 'board mini';
-    wrap.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`;
+    wrap.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; wrap.style.setProperty('--cols', grid.cols);
     const order = new Map(res.path.map((p, k) => [p, k]));
     const wildAt = new Set(res.wild);
     for (let i = 0; i < grid.rows * grid.cols; i++) {

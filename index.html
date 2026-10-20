@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="top">
@@ -25,9 +25,22 @@
       Choose screenshot
     </label>
     <input id="fileInput" type="file" accept="image/*" hidden>
-    <div class="row-btns">
-      <button id="blankBtn" class="ghost">Type grid manually</button>
-    </div>
+    <details class="manual" id="manualBox">
+      <summary class="ghost">Type grid manually / board size</summary>
+      <div class="manual-body">
+        <div class="size-row">
+          <label class="fl"><span class="lbl">Columns</span>
+            <div class="stepper"><button type="button" data-step="cols" data-d="-1" aria-label="Fewer columns">−</button><output id="colsOut">10</output><button type="button" data-step="cols" data-d="1" aria-label="More columns">+</button></div></label>
+          <label class="fl"><span class="lbl">Rows</span>
+            <div class="stepper"><button type="button" data-step="rows" data-d="-1" aria-label="Fewer rows">−</button><output id="rowsOut">13</output><button type="button" data-step="rows" data-d="1" aria-label="More rows">+</button></div></label>
+        </div>
+        <p class="hint">Rows include both home rows (top and bottom). Columns 4–15, rows 4–20.</p>
+        <div class="row-btns">
+          <button id="blankBtn" class="ghost">New blank board</button>
+          <button id="resizeBtn" class="ghost" disabled>Resize current board</button>
+        </div>
+      </div>
+    </details>
     <p class="hint">Tip: on desktop you can also paste (Ctrl/⌘+V) a screenshot.</p>
     <p id="readMsg" class="msg" hidden></p>
   </section>
@@ -112,7 +125,7 @@
 </div>
 
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="reader.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
