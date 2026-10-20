@@ -170,6 +170,44 @@ function solve(grid, opts) {
   return { results: results.slice(0, opts.limit || 5000), total: results.length, timedOut, curDepth };
 }
 
+// ---------- puzzle lookup (whole dictionary, no grid) ----------
+// prefix: starting letters; length: exact length or 0 for any; pattern: e.g. "RA?I?" ('?' = any letter)
+function lookup({ prefix = '', length = 0, pattern = '', limit = 3000 }) {
+  prefix = prefix.toUpperCase().replace(/[^A-Z]/g, '');
+  pattern = pattern.toUpperCase().replace(/[^A-Z?]/g, '');
+  if (pattern) {
+    if (length && length !== pattern.length) return { words: [], total: 0, conflict: 'Pattern length and number of letters differ.' };
+    length = pattern.length;
+    for (let i = 0; i < prefix.length; i++) {
+      if (i >= pattern.length) return { words: [], total: 0, conflict: 'Starting letters are longer than the pattern.' };
+      if (pattern[i] !== '?' && pattern[i] !== prefix[i]) return { words: [], total: 0, conflict: 'Starting letters don’t match the pattern.' };
+    }
+  }
+  if (length && prefix.length > length) return { words: [], total: 0, conflict: 'Starting letters are longer than the number of letters.' };
+  let node = 0;
+  for (let i = 0; i < prefix.length; i++) {
+    node = findChild(node, prefix.charCodeAt(i) - 65);
+    if (node === -1) return { words: [], total: 0 };
+  }
+  const maxLen = length || 20;
+  const words = [];
+  let total = 0;
+  const buf = prefix.split('');
+  (function walk(n) {
+    const L = buf.length;
+    if (term[n] && (!length || L === length)) { total++; if (words.length < limit) words.push(buf.join('')); }
+    if (L >= maxLen) return;
+    const want = pattern ? pattern[L] : '?';
+    for (let k = child[n]; k !== -1; k = sib[k]) {
+      const c = String.fromCharCode(65 + ch[k]);
+      if (want !== '?' && want !== c) continue;
+      buf.push(c); walk(k); buf.pop();
+    }
+  })(node);
+  words.sort((a, b) => a.length - b.length || (a < b ? -1 : 1));
+  return { words, total };
+}
+
 if (typeof self !== 'undefined') self.onmessage = async (e) => {
   const m = e.data;
   try {
@@ -181,10 +219,12 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
       const t = Date.now();
       const out = solve(m.grid, m.opts);
       self.postMessage({ type: 'solved', id: m.id, ms: Date.now() - t, ...out });
+    } else if (m.type === 'lookup') {
+      self.postMessage({ type: 'looked', id: m.id, ...lookup(m.query) });
     }
   } catch (err) {
     self.postMessage({ type: 'error', id: m.id, message: String(err && err.message || err) });
   }
 };
 
-if (typeof module !== 'undefined') module.exports = { load, solve, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };
+if (typeof module !== 'undefined') module.exports = { load, solve, lookup, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };

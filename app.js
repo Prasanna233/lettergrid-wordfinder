@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=4');
+  const worker = new Worker('solver.worker.js?v=5');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -26,6 +26,7 @@
       dictReady = true;
       setStatus(m.count.toLocaleString() + ' words', 'ok');
       updateSolveBtn();
+      runPuzzle();
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
@@ -35,6 +36,8 @@
       renderResults(true);
       $('#resultsCard').hidden = false;
       $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (m.type === 'looked') {
+      if (m.id === pzId) renderPuzzle(m);
     } else if (m.type === 'error') {
       setStatus('Error', 'err');
       showMsg(m.message);
@@ -412,6 +415,56 @@
       ${r.reaches ? '<span><b>🏁 Connects to opponent row</b></span>' : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
     li.appendChild(det);
   });
+
+  // ---------------- tabs ----------------
+  function showTab(t) {
+    settings.tab = t; saveSettings();
+    document.querySelectorAll('#tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'));
+    $('#gridView').hidden = t !== 'grid';
+    $('#puzzleView').hidden = t !== 'puzzle';
+    window.scrollTo(0, 0);
+  }
+  $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+  // ---------------- puzzle solver ----------------
+  let pzId = 0, pzTimer = 0;
+  const pzLen = () => settings.pzLen || 0;
+  (function buildLenPicker() {
+    const box = $('#pzLen');
+    const opts = [0]; for (let k = 4; k <= 20; k++) opts.push(k);
+    box.innerHTML = opts.map(k => `<button type="button" data-len="${k}">${k || 'Any'}</button>`).join('');
+    box.addEventListener('click', e => {
+      const b = e.target.closest('[data-len]'); if (!b) return;
+      settings.pzLen = +b.dataset.len; saveSettings(); syncLen(); runPuzzle();
+    });
+  })();
+  function syncLen() { document.querySelectorAll('#pzLen [data-len]').forEach(b => b.classList.toggle('on', +b.dataset.len === pzLen())); }
+  syncLen();
+  for (const id of ['#pzPrefix', '#pzPattern']) $(id).addEventListener('input', () => { clearTimeout(pzTimer); pzTimer = setTimeout(runPuzzle, 120); });
+  $('#pzClear').addEventListener('click', () => { $('#pzPrefix').value = ''; $('#pzPattern').value = ''; settings.pzLen = 0; saveSettings(); syncLen(); runPuzzle(); $('#pzPrefix').focus(); });
+
+  function runPuzzle() {
+    const prefix = $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, '');
+    const pattern = $('#pzPattern').value.toUpperCase().replace(/[^A-Z?]/g, '');
+    const length = pzLen();
+    $('#pzClear').hidden = !(prefix || pattern || length);
+    if (!prefix && !pattern && !length) { pzId++; $('#pzTitle').textContent = 'Words'; $('#pzMsg').textContent = 'Enter starting letters and/or pick a number of letters.'; $('#pzMsg').hidden = false; $('#pzResults').innerHTML = ''; return; }
+    if (!dictReady) { $('#pzMsg').textContent = 'Loading dictionary…'; $('#pzMsg').hidden = false; return; }
+    worker.postMessage({ type: 'lookup', id: ++pzId, query: { prefix, length, pattern, limit: 3000 } });
+  }
+  function renderPuzzle(m) {
+    const out = $('#pzResults');
+    $('#pzTitle').textContent = `${m.total.toLocaleString()} word${m.total === 1 ? '' : 's'}`;
+    const msg = m.conflict || (m.total === 0 ? 'No dictionary words match. (The dictionary only has words of 4–20 letters.)' : m.total > m.words.length ? `Showing the first ${m.words.length.toLocaleString()} — add more letters to narrow it down.` : '');
+    $('#pzMsg').textContent = msg; $('#pzMsg').hidden = !msg;
+    const groups = new Map();
+    for (const w of m.words) { if (!groups.has(w.length)) groups.set(w.length, []); groups.get(w.length).push(w); }
+    const prefix = $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, '');
+    out.innerHTML = [...groups].map(([len, ws]) =>
+      `<div class="pz-group"><div class="lbl">${len} letters · ${ws.length.toLocaleString()}</div><div class="pz-words">${
+        ws.map(w => `<span class="pz-w"><b>${w.slice(0, prefix.length)}</b>${w.slice(prefix.length)}</span>`).join('')}</div></div>`).join('');
+  }
+  if (settings.tab === 'puzzle') showTab('puzzle');
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
