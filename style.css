@@ -136,3 +136,11 @@ select { background: #151515; border: 1px solid var(--line); border-radius: 8px;
 #pzResultsCard .card-head { margin-bottom: 0; }
 #pzMsg { margin: 8px 0 0; }
 main[hidden], [hidden] { display: none !important; }
+
+.big-btn.small { min-height: 48px; font-size: 16px; }
+.pz-board { display: grid; gap: 8px; }
+.pz-board .hint { margin: 0; }
+.linkbtn.inline { padding: 0; min-height: 0; font-size: 13px; text-decoration: underline; }
+.pz-w.tap { cursor: pointer; }
+.pz-w.sel { border-color: #5ee37a; box-shadow: 0 0 0 1px #5ee37a inset; color: var(--text); }
+.pz-sel { margin-top: 6px !important; }

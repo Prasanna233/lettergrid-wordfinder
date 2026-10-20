@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=5');
+  const worker = new Worker('solver.worker.js?v=6');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -27,6 +27,8 @@
       setStatus(m.count.toLocaleString() + ' words', 'ok');
       updateSolveBtn();
       runPuzzle();
+    } else if (m.type === 'solved' && typeof m.id === 'string') {
+      if (m.id === 'pz' + pzId) pzSolved(m);
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
@@ -108,6 +110,7 @@
       afterGridLoaded();
     } catch (err) {
       showMsg((err && err.message ? err.message : String(err)) + ' You can type the grid manually instead.');
+      if (!$('#puzzleView').hidden) $('#pzBoardInfo').textContent = (err && err.message ? err.message : String(err)) + ' Try another screenshot, or type the board in the Grid solver tab.';
     }
   }
   function fileToImage(file) {
@@ -185,7 +188,7 @@
     size.cols = grid.cols; size.rows = grid.rows; syncSize();
     syncControls();
     renderMainBoard();
-    $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!$('#gridView').hidden) $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ---------------- board rendering ----------------
@@ -209,6 +212,7 @@
   }
 
   function renderMainBoard() {
+    if (typeof pzBoardChanged === 'function') pzBoardChanged();
     const b = $('#board');
     b.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; b.style.setProperty('--cols', grid.cols);
     b.innerHTML = '';
@@ -233,12 +237,13 @@
     for (let i = 0; i < grid.rows * grid.cols; i++) {
       const d = document.createElement('div');
       const k = order.get(i);
-      d.className = cellClass(i) + (k === undefined ? ' dim' : ' on');
+      d.className = cellClass(i) + (k === undefined ? (res.path.length ? ' dim' : '') : ' on');
       if (k !== undefined && wildAt.has(k)) d.innerHTML = `<span class="wl">${res.word[k]}</span>`;
       else d.innerHTML = letterHTML(i);
       if (k !== undefined) d.insertAdjacentHTML('beforeend', `<span class="n">${k + 1}</span>`);
       wrap.appendChild(d);
     }
+    if (!res.path.length) return wrap;
     const W = grid.cols * 100, H = grid.rows * 95;
     const pts = res.path.map(i => `${(i % grid.cols) * 100 + 50},${Math.floor(i / grid.cols) * 95 + 47.5}`).join(' ');
     const [sx, sy] = pts.split(' ')[0].split(',');
@@ -422,6 +427,7 @@
     document.querySelectorAll('#tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'));
     $('#gridView').hidden = t !== 'grid';
     $('#puzzleView').hidden = t !== 'puzzle';
+    if (t === 'puzzle' && typeof syncPzBoard === 'function') { syncPzBoard(); runPuzzle(); }
     window.scrollTo(0, 0);
   }
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
@@ -443,7 +449,92 @@
   for (const id of ['#pzPrefix', '#pzPattern']) $(id).addEventListener('input', () => { clearTimeout(pzTimer); pzTimer = setTimeout(runPuzzle, 120); });
   $('#pzClear').addEventListener('click', () => { $('#pzPrefix').value = ''; $('#pzPattern').value = ''; settings.pzLen = 0; saveSettings(); syncLen(); runPuzzle(); $('#pzPrefix').focus(); });
 
+  // ----- screenshot-board source -----
+  let pzCache = null, pzSel = null, pzPending = null;
+  const pzSrc = () => settings.pzSrc || 'dict';
+  function syncSrc() {
+    document.querySelectorAll('#pzSrcSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === pzSrc()));
+    $('#pzBoardBox').hidden = pzSrc() !== 'board';
+    syncPzBoard();
+  }
+  $('#pzSrcSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    settings.pzSrc = b.dataset.v; saveSettings(); pzSel = null; syncSrc(); runPuzzle();
+  });
+  $('#pzFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) readImageFile(f); e.target.value = ''; });
+  function pzBoardChanged() { pzCache = null; pzSel = null; if (!$('#puzzleView').hidden) { syncPzBoard(); runPuzzle(); } }
+  function syncPzBoard() {
+    if (pzSrc() !== 'board') return;
+    $('#pzFileLbl').textContent = grid ? 'Change screenshot' : 'Add screenshot';
+    const low = grid ? grid.conf.filter(c => c < 0.5).length : 0;
+    $('#pzBoardInfo').innerHTML = !grid ? 'Add a screenshot of the game. Words are traced through touching letters (diagonals too), each cell once.'
+      : `Board ${grid.cols}×${grid.rows}.${low ? ` <b>${low}</b> cell${low > 1 ? 's' : ''} may be misread.` : ''} <button type="button" class="linkbtn inline" id="pzEdit">Fix letters in Grid solver</button>`;
+    const v = $('#pzBoardView'); v.innerHTML = '';
+    if (grid) {
+      v.appendChild(miniBoard(pzSel || { path: [], wild: [], word: '' }));
+      if (pzSel) v.insertAdjacentHTML('beforeend', `<p class="hint pz-sel">Showing <b>${pzSel.word}</b> — tap another word, or tap it again to hide.</p>`);
+    }
+    const ed = $('#pzEdit'); if (ed) ed.addEventListener('click', () => showTab('grid'));
+  }
+  function pzSolved(m) {
+    pzCache = { key: pzPending, results: m.results };
+    renderBoardWords();
+  }
+  function pzBounds() {
+    const pattern = $('#pzPattern').value.toUpperCase().replace(/[^A-Z?]/g, '');
+    const length = pzLen();
+    if (pattern) return { min: pattern.length, max: pattern.length, conflict: length && length !== pattern.length ? 'Pattern length and number of letters differ.' : '' };
+    return { min: length || 4, max: length || 20 };
+  }
+  function runBoardPuzzle() {
+    if (!grid) { $('#pzTitle').textContent = 'Words'; $('#pzMsg').textContent = 'Add a screenshot of the game board above.'; $('#pzMsg').hidden = false; $('#pzResults').innerHTML = ''; return; }
+    if (!dictReady) { $('#pzMsg').textContent = 'Loading dictionary…'; $('#pzMsg').hidden = false; return; }
+    const b = pzBounds();
+    if (b.conflict) { $('#pzTitle').textContent = '0 words'; $('#pzMsg').textContent = b.conflict; $('#pzMsg').hidden = false; $('#pzResults').innerHTML = ''; return; }
+    const key = `${grid.rows}x${grid.cols}|${grid.letters.join(',')}|${b.min}-${b.max}`;
+    if (pzCache && pzCache.key === key) return renderBoardWords();
+    pzPending = key;
+    $('#pzMsg').textContent = 'Searching the board…'; $('#pzMsg').hidden = false;
+    worker.postMessage({
+      type: 'solve', id: 'pz' + (++pzId),
+      grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
+      opts: { minLen: b.min, maxLen: b.max, start: 'anywhere', limit: 100000 },
+    });
+  }
+  let pzMap = new Map();
+  function renderBoardWords() {
+    const prefix = $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, '');
+    const pattern = $('#pzPattern').value.toUpperCase().replace(/[^A-Z?]/g, '');
+    const re = pattern ? new RegExp('^' + pattern.replace(/\?/g, '.') + '$') : null;
+    const list = pzCache.results.filter(r => r.word.startsWith(prefix) && (!re || re.test(r.word)))
+      .sort((a, b) => a.len - b.len || (a.word < b.word ? -1 : 1));
+    pzMap = new Map(list.map(r => [r.word, r]));
+    $('#pzTitle').textContent = `${list.length.toLocaleString()} word${list.length === 1 ? '' : 's'} on the board`;
+    const shown = list.slice(0, 3000);
+    const msg = !list.length ? 'No words on this board match. Try another length or fewer starting letters.'
+      : list.length > shown.length ? `Showing the first ${shown.length.toLocaleString()} — add starting letters to narrow it down.` : 'Tap a word to see its path on the board.';
+    $('#pzMsg').textContent = msg; $('#pzMsg').hidden = false;
+    renderWordGroups(shown.map(r => r.word), prefix, true);
+  }
+  $('#pzResults').addEventListener('click', e => {
+    const w = e.target.closest('.pz-w[data-w]'); if (!w || pzSrc() !== 'board') return;
+    const r = pzMap.get(w.dataset.w); if (!r) return;
+    pzSel = pzSel && pzSel.word === r.word ? null : r;
+    document.querySelectorAll('.pz-w.sel').forEach(x => x.classList.remove('sel'));
+    if (pzSel) w.classList.add('sel');
+    syncPzBoard();
+    if (pzSel) $('#pzBoardView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  function renderWordGroups(words, prefix, clickable) {
+    const groups = new Map();
+    for (const w of words) { if (!groups.has(w.length)) groups.set(w.length, []); groups.get(w.length).push(w); }
+    $('#pzResults').innerHTML = [...groups].map(([len, ws]) =>
+      `<div class="pz-group"><div class="lbl">${len} letters · ${ws.length.toLocaleString()}</div><div class="pz-words">${
+        ws.map(w => `<span class="pz-w${clickable ? ' tap' : ''}${pzSel && pzSel.word === w ? ' sel' : ''}"${clickable ? ` data-w="${w}"` : ''}><b>${w.slice(0, prefix.length)}</b>${w.slice(prefix.length)}</span>`).join('')}</div></div>`).join('');
+  }
+
   function runPuzzle() {
+    if (pzSrc() === 'board') { $('#pzClear').hidden = !($('#pzPrefix').value || $('#pzPattern').value || pzLen()); return runBoardPuzzle(); }
     const prefix = $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, '');
     const pattern = $('#pzPattern').value.toUpperCase().replace(/[^A-Z?]/g, '');
     const length = pzLen();
@@ -453,17 +544,12 @@
     worker.postMessage({ type: 'lookup', id: ++pzId, query: { prefix, length, pattern, limit: 3000 } });
   }
   function renderPuzzle(m) {
-    const out = $('#pzResults');
-    $('#pzTitle').textContent = `${m.total.toLocaleString()} word${m.total === 1 ? '' : 's'}`;
+        $('#pzTitle').textContent = `${m.total.toLocaleString()} word${m.total === 1 ? '' : 's'}`;
     const msg = m.conflict || (m.total === 0 ? 'No dictionary words match. (The dictionary only has words of 4–20 letters.)' : m.total > m.words.length ? `Showing the first ${m.words.length.toLocaleString()} — add more letters to narrow it down.` : '');
     $('#pzMsg').textContent = msg; $('#pzMsg').hidden = !msg;
-    const groups = new Map();
-    for (const w of m.words) { if (!groups.has(w.length)) groups.set(w.length, []); groups.get(w.length).push(w); }
-    const prefix = $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, '');
-    out.innerHTML = [...groups].map(([len, ws]) =>
-      `<div class="pz-group"><div class="lbl">${len} letters · ${ws.length.toLocaleString()}</div><div class="pz-words">${
-        ws.map(w => `<span class="pz-w"><b>${w.slice(0, prefix.length)}</b>${w.slice(prefix.length)}</span>`).join('')}</div></div>`).join('');
+    renderWordGroups(m.words, $('#pzPrefix').value.toUpperCase().replace(/[^A-Z]/g, ''), false);
   }
+  syncSrc();
   if (settings.tab === 'puzzle') showTab('puzzle');
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
