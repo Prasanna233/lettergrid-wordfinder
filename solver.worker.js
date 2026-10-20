@@ -101,6 +101,7 @@ function solve(grid, opts) {
   for (let i = 0; i < n; i++) {
     if (!letters[i]) continue;
     if (opts.start === 'anywhere') allowedStart[i] = 1;
+    else if (opts.start === 'opp') { if (opp[i]) allowedStart[i] = 1; }
     else if (mine[i]) allowedStart[i] = 1;
     else if (opts.start === 'adjacent' && nbrs[i].some(j => mine[j])) allowedStart[i] = 1;
   }

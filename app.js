@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=6');
+  const worker = new Worker('solver.worker.js?v=7');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -401,7 +401,7 @@
     ol.appendChild(frag);
     shown = end;
     $('#moreBtn').hidden = shown >= view.length;
-    if (!view.length) ol.innerHTML = '<li class="hint" style="padding:12px 0">No words match. Try turning off a filter, or “Next to them” / “Anywhere”.</li>';
+    if (!view.length) ol.innerHTML = '<li class="hint" style="padding:12px 0">No words match. Try turning off a filter, or another “Word starts” option.</li>';
   }
   $('#moreBtn').addEventListener('click', () => renderResults(false));
   $('#results').addEventListener('click', e => {
