@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=7');
+  const worker = new Worker('solver.worker.js?v=8');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -27,8 +27,10 @@
       setStatus(m.count.toLocaleString() + ' words', 'ok');
       updateSolveBtn();
       runPuzzle();
+      if (grid) checkHeavy();
     } else if (m.type === 'solved' && typeof m.id === 'string') {
       if (m.id === 'pz' + pzId) pzSolved(m);
+      else if (m.id === 'hv' + hvId) renderHeavy(m);
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
@@ -182,6 +184,7 @@
   });
 
   function afterGridLoaded() {
+    heavyText = ''; $('#heavyNote').hidden = true; syncHeavyPz();
     results = []; openIdx = -1;
     $('#boardCard').hidden = false;
     $('#resultsCard').hidden = true;
@@ -190,6 +193,36 @@
     renderMainBoard();
     if (!$('#gridView').hidden) $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  // ---------------- left / right heavy ----------------
+  let hvId = 0, hvTimer = 0, heavyText = '';
+  function checkHeavy() {
+    if (!grid || !dictReady) return;
+    worker.postMessage({
+      type: 'solve', id: 'hv' + (++hvId),
+      grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
+      opts: { minLen: 4, maxLen: 20, start: 'anywhere', limit: 200000, wildFollowUp: false },
+    });
+  }
+  function renderHeavy(m) {
+    const mid = (grid.cols - 1) / 2;
+    let L = 0, R = 0;
+    for (const r of m.results) {
+      let s = 0; for (const i of r.path) s += i % grid.cols;
+      const avg = s / r.path.length;
+      if (avg < mid - 1e-9) L++; else if (avg > mid + 1e-9) R++;
+    }
+    const el = $('#heavyNote');
+    if (!L && !R) { heavyText = ''; el.hidden = true; syncHeavyPz(); return; }
+    const pl = Math.round(100 * L / (L + R)), pr = 100 - pl;
+    const f = x => x.toLocaleString();
+    if (pl >= 55) { heavyText = `⬅ <b>Left heavy</b>: ${pl}% of the words on this board sit on the left half (${f(L)} vs ${f(R)}).`; el.className = 'heavy left'; }
+    else if (pr >= 55) { heavyText = `<b>Right heavy</b> ➡: ${pr}% of the words on this board sit on the right half (${f(R)} vs ${f(L)}).`; el.className = 'heavy right'; }
+    else { heavyText = `⚖ <b>Balanced</b>: ${pl}% of words on the left half, ${pr}% on the right.`; el.className = 'heavy'; }
+    el.innerHTML = heavyText; el.hidden = false;
+    syncHeavyPz();
+  }
+  function syncHeavyPz() { const p = $('#pzHeavy'); if (p) { p.innerHTML = heavyText; p.hidden = !heavyText; } }
 
   // ---------------- board rendering ----------------
   function cellClass(i) {
@@ -212,6 +245,7 @@
   }
 
   function renderMainBoard() {
+    clearTimeout(hvTimer); hvTimer = setTimeout(checkHeavy, 700);
     if (typeof pzBoardChanged === 'function') pzBoardChanged();
     const b = $('#board');
     b.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; b.style.setProperty('--cols', grid.cols);
@@ -395,7 +429,7 @@
       const li = document.createElement('li');
       li.dataset.k = k;
       const w = r.word.split('').map((ch, idx) => (r.wild.includes(idx) ? `<span class="wl">${ch}</span>` : ch)).join('');
-      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '🏁' : ''}${r.cuts ? '✂' : ''}${r.whiteHits ? '★' : ''}<span class="len-b">${r.len}</span><span class="sc">${r.reaches ? r.score - 1000 : r.score}</span></span></div>`;
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '🏁' : ''}${r.cuts ? '✂' : ''}${r.whiteHits ? '★' : ''}${r.followUp !== undefined ? `<span class="fu" title="Follow-up words through the wildcard">🤔${r.followUp}</span>` : ''}<span class="len-b">${r.len}</span><span class="sc">${Math.round(r.reaches ? r.score - 1000 : r.score)}</span></span></div>`;
       frag.appendChild(li);
     }
     ol.appendChild(frag);
@@ -413,7 +447,8 @@
     const r = view[k];
     const det = document.createElement('div'); det.className = 'detail';
     det.appendChild(miniBoard(r));
-    const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
+    const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ')
+      + (r.followUp !== undefined ? (r.followUp ? ` — opens <b>${r.followUp}</b> follow-up word${r.followUp > 1 ? 's' : ''} through it next turn` : ' — <b>dead end</b>: no follow-up words through it') : '');
     det.insertAdjacentHTML('beforeend', `<div class="facts">
       <span>Cells gained <b>${r.gained}</b></span><span>Stolen <b>${r.stolen}</b></span>${r.cuts ? `<span>Cuts through <b>${r.cuts}</b> opponent letter${r.cuts > 1 ? 's' : ''}</span>` : ''}
       <span>Rows advanced <b>${r.depthGain}</b></span>${r.whiteHits ? `<span>Capture tiles <b>${r.whiteHits}</b></span>` : ''}
@@ -469,6 +504,7 @@
     const low = grid ? grid.conf.filter(c => c < 0.5).length : 0;
     $('#pzBoardInfo').innerHTML = !grid ? 'Add a screenshot of the game. Words are traced through touching letters (diagonals too), each cell once.'
       : `Board ${grid.cols}×${grid.rows}.${low ? ` <b>${low}</b> cell${low > 1 ? 's' : ''} may be misread.` : ''} <button type="button" class="linkbtn inline" id="pzEdit">Fix letters in Grid solver</button>`;
+    syncHeavyPz();
     const v = $('#pzBoardView'); v.innerHTML = '';
     if (grid) {
       v.appendChild(miniBoard(pzSel || { path: [], wild: [], word: '' }));

@@ -168,7 +168,50 @@ function solve(grid, opts) {
 
   const results = Array.from(best.values());
   results.sort((a, b) => b.score - a.score || b.len - a.len || a.word.localeCompare(b.word));
-  return { results: results.slice(0, opts.limit || 5000), total: results.length, timedOut, curDepth };
+
+  // ---- wildcard follow-up: does the letter we fix a 🤔 to open new words next turn? ----
+  let wildChecked = 0;
+  if (opts.wildFollowUp !== false && opts.start !== 'opp') {
+    const wildDeadline = Date.now() + (opts.wildTimeMs || 3000);
+    const cand = results.filter(r => r.wild.length).slice(0, opts.wildTop || 120);
+    for (const r of cand) {
+      if (Date.now() > wildDeadline) break;
+      r.followUp = followUpCount(r);
+      // reward letters that keep words flowing; a 🤔 spent on a dead-end letter costs a little
+      r.score += r.followUp ? Math.min(r.followUp, 40) * 0.25 : -5;
+      wildChecked++;
+    }
+    if (wildChecked) results.sort((a, b) => b.score - a.score || b.len - a.len || a.word.localeCompare(b.word));
+  }
+
+  // words available next turn, starting on my (new) territory, that pass through a now-fixed wildcard cell
+  function followUpCount(r) {
+    const L = letters.slice();
+    const target = new Uint8Array(n);
+    r.wild.forEach(k => { const cell = r.path[k]; L[cell] = r.word[k]; target[cell] = 1; });
+    const own = mine.slice();
+    for (const i of r.path) { own[i] = 1; if (white[i]) for (const j of nbrs[i]) own[j] = 1; }
+    const seenW = new Set(), u = new Uint8Array(n), chars = [];
+    let hits = 0;
+    function go(i, node) {
+      const Li = L[i];
+      const kids = [];
+      if (Li === '?') { for (let k = child[node]; k !== -1; k = sib[k]) kids.push(k); }
+      else { const k = findChild(node, Li.charCodeAt(0) - 65); if (k !== -1) kids.push(k); }
+      if (!kids.length) return;
+      u[i] = 1; hits += target[i];
+      for (const k of kids) {
+        chars.push(String.fromCharCode(65 + ch[k]));
+        if (term[k] && chars.length >= minLen && hits > 0) seenW.add(chars.join(''));
+        if (chars.length < maxLen && child[k] !== -1) for (const j of nbrs[i]) if (!u[j] && L[j]) go(j, k);
+        chars.pop();
+      }
+      u[i] = 0; hits -= target[i];
+    }
+    for (let i = 0; i < n; i++) if (own[i] && L[i]) go(i, 0);
+    return seenW.size;
+  }
+  return { results: results.slice(0, opts.limit || 5000), total: results.length, timedOut, curDepth, wildChecked };
 }
 
 // ---------- puzzle lookup (whole dictionary, no grid) ----------
