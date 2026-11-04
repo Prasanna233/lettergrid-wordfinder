@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=9');
+  const worker = new Worker('solver.worker.js?v=10');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -184,7 +184,7 @@
   });
 
   function afterGridLoaded() {
-    heavyText = ''; $('#heavyNote').hidden = true; syncHeavyPz();
+    heavyText = ''; $('#heavyNote').hidden = true; syncHeavyPz(); syncHalf();
     results = []; openIdx = -1;
     $('#boardCard').hidden = false;
     $('#resultsCard').hidden = true;
@@ -196,8 +196,14 @@
 
   // ---------------- left / right half picker ----------------
   const half = () => settings.half || 'both';
+  // keep in step with solver.worker.js: 30% of the width stays outside the centre on each side
+  function centreCols(cols) { const lo = Math.floor(cols * 0.3); return [lo, cols - 1 - lo]; }
   function syncHalf() {
     for (const id of ['#halfSeg', '#pzHalfSeg']) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === half()));
+    const cols = grid ? grid.cols : 10, [lo, hi] = centreCols(cols), mid = (cols - 1) / 2;
+    const L = Math.floor(mid) + 1, R = Math.ceil(mid) + 1;
+    const txt = { both: '', left: `Columns 1–${L}`, right: `Columns ${R}–${cols}`, center: `Centre = columns ${lo + 1}–${hi + 1} of ${cols}` }[half()];
+    document.querySelectorAll('.half-hint').forEach(p => { p.textContent = txt; p.hidden = !txt; });
   }
   for (const id of ['#halfSeg', '#pzHalfSeg']) $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.dataset.v === half()) return;
@@ -242,6 +248,7 @@
   function outsideHalf(i) {
     const h = half(); if (h === 'both') return false;
     const c = i % grid.cols, mid = (grid.cols - 1) / 2;
+    if (h === 'center') { const [lo, hi] = centreCols(grid.cols); return c < lo || c > hi; }
     return h === 'left' ? c > mid : c < mid;
   }
   function cellClass(i) {

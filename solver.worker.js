@@ -99,10 +99,13 @@ function solve(grid, opts) {
 
   // left / right half of the board (odd widths: the centre column counts for both halves)
   const inSide = new Uint8Array(n).fill(1);
-  if (opts.side === 'left' || opts.side === 'right') {
+  // centre = middle columns, leaving 30% of the width on each side (10 cols -> columns 4-7)
+  const cLo = Math.floor(cols * 0.3), cHi = cols - 1 - cLo;
+  if (opts.side === 'left' || opts.side === 'right' || opts.side === 'center') {
     for (let i = 0; i < n; i++) {
-      const c = i % cols, left = c <= (cols - 1) / 2, right = c >= (cols - 1) / 2 + (cols % 2 ? 0 : 0.5);
-      inSide[i] = (opts.side === 'left' ? left : right) ? 1 : 0;
+      const c = i % cols, left = c <= (cols - 1) / 2, right = c >= (cols - 1) / 2;
+      const ok = opts.side === 'left' ? left : opts.side === 'right' ? right : c >= cLo && c <= cHi;
+      inSide[i] = ok ? 1 : 0;
     }
   }
 

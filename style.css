@@ -154,3 +154,4 @@ main[hidden], [hidden] { display: none !important; }
 .half-ctl { display: grid; gap: 6px; margin: 0 0 10px; }
 .half-seg button { font-size: 13px; }
 .board .cell.off { filter: brightness(.35) saturate(.4); }
+.half-hint { margin: 0 !important; font-size: 12px; }
