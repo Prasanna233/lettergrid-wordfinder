@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <header class="top">
@@ -59,6 +59,8 @@
       <span><i class="lg mine"></i>Mine</span><span><i class="lg opp"></i>Opponent</span><span><i class="lg white"></i>Capture tile</span><span><i class="lg low"></i>Check</span>
     </div>
     <p id="heavyNote" class="heavy" hidden></p>
+    <div class="half-ctl"><span class="lbl">Words from</span>
+      <div class="seg half-seg" id="halfSeg"><button type="button" data-v="both">Both sides</button><button type="button" data-v="left">⬅ Left half</button><button type="button" data-v="right">Right half ➡</button></div></div>
     <div id="board" class="board"></div>
 
     <div class="controls">
@@ -129,6 +131,8 @@
         <input id="pzFile" type="file" accept="image/*" hidden>
         <p id="pzBoardInfo" class="hint"></p>
         <p id="pzHeavy" class="heavy" hidden></p>
+        <div class="half-ctl"><span class="lbl">Words from</span>
+      <div class="seg half-seg" id="pzHalfSeg"><button type="button" data-v="both">Both sides</button><button type="button" data-v="left">⬅ Left half</button><button type="button" data-v="right">Right half ➡</button></div></div>
         <div id="pzBoardView"></div>
       </div>
       <label class="fl"><span class="lbl">Starting letters</span>
@@ -167,7 +171,7 @@
 </div>
 
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="reader.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=8');
+  const worker = new Worker('solver.worker.js?v=9');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -194,6 +194,20 @@
     if (!$('#gridView').hidden) $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // ---------------- left / right half picker ----------------
+  const half = () => settings.half || 'both';
+  function syncHalf() {
+    for (const id of ['#halfSeg', '#pzHalfSeg']) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === half()));
+  }
+  for (const id of ['#halfSeg', '#pzHalfSeg']) $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.dataset.v === half()) return;
+    settings.half = b.dataset.v; saveSettings(); syncHalf();
+    if (!grid) return;
+    renderMainBoard();                         // redraw dimming; also refreshes the puzzle board + results
+    if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();  // keep grid results in step
+  });
+  syncHalf();
+
   // ---------------- left / right heavy ----------------
   let hvId = 0, hvTimer = 0, heavyText = '';
   function checkHeavy() {
@@ -225,6 +239,11 @@
   function syncHeavyPz() { const p = $('#pzHeavy'); if (p) { p.innerHTML = heavyText; p.hidden = !heavyText; } }
 
   // ---------------- board rendering ----------------
+  function outsideHalf(i) {
+    const h = half(); if (h === 'both') return false;
+    const c = i % grid.cols, mid = (grid.cols - 1) / 2;
+    return h === 'left' ? c > mid : c < mid;
+  }
   function cellClass(i) {
     const r = Math.floor(i / grid.cols);
     const s = grid.state[i];
@@ -237,6 +256,7 @@
     else if (s === other(grid.myColor)) cls += ' opp';
     else if (s === 'W') cls += ' W';
     if (!grid.letters[i]) cls += ' empty';
+    if (outsideHalf(i)) cls += ' off';
     return cls;
   }
   function letterHTML(i) {
@@ -375,7 +395,7 @@
     worker.postMessage({
       type: 'solve', id: solveId,
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: settings.minLen, maxLen: settings.maxLen, start: settings.start, limit: 20000 },
+      opts: { minLen: settings.minLen, maxLen: settings.maxLen, start: settings.start, side: half(), limit: 20000 },
     });
   });
 
@@ -527,14 +547,14 @@
     if (!dictReady) { $('#pzMsg').textContent = 'Loading dictionary…'; $('#pzMsg').hidden = false; return; }
     const b = pzBounds();
     if (b.conflict) { $('#pzTitle').textContent = '0 words'; $('#pzMsg').textContent = b.conflict; $('#pzMsg').hidden = false; $('#pzResults').innerHTML = ''; return; }
-    const key = `${grid.rows}x${grid.cols}|${grid.letters.join(',')}|${b.min}-${b.max}`;
+    const key = `${grid.rows}x${grid.cols}|${grid.letters.join(',')}|${b.min}-${b.max}|${half()}`;
     if (pzCache && pzCache.key === key) return renderBoardWords();
     pzPending = key;
     $('#pzMsg').textContent = 'Searching the board…'; $('#pzMsg').hidden = false;
     worker.postMessage({
       type: 'solve', id: 'pz' + (++pzId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: b.min, maxLen: b.max, start: 'anywhere', limit: 100000 },
+      opts: { minLen: b.min, maxLen: b.max, start: 'anywhere', side: half(), limit: 100000 },
     });
   }
   let pzMap = new Map();

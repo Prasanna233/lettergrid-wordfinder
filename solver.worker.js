@@ -97,9 +97,18 @@ function solve(grid, opts) {
   }
   const curDepth = connectedDepth(i => mine[i] === 1).depth;
 
+  // left / right half of the board (odd widths: the centre column counts for both halves)
+  const inSide = new Uint8Array(n).fill(1);
+  if (opts.side === 'left' || opts.side === 'right') {
+    for (let i = 0; i < n; i++) {
+      const c = i % cols, left = c <= (cols - 1) / 2, right = c >= (cols - 1) / 2 + (cols % 2 ? 0 : 0.5);
+      inSide[i] = (opts.side === 'left' ? left : right) ? 1 : 0;
+    }
+  }
+
   const allowedStart = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    if (!letters[i]) continue;
+    if (!letters[i] || !inSide[i]) continue;
     if (opts.start === 'anywhere') allowedStart[i] = 1;
     else if (opts.start === 'opp') { if (opp[i]) allowedStart[i] = 1; }
     else if (mine[i]) allowedStart[i] = 1;
@@ -161,7 +170,7 @@ function solve(grid, opts) {
   function step(i, k) {
     if (term[k] && path.length >= minLen) record(k);
     if (path.length >= maxLen || child[k] === -1) return;
-    for (const j of nbrs[i]) if (!used[j] && letters[j]) dfs(j, k);
+    for (const j of nbrs[i]) if (!used[j] && letters[j] && inSide[j]) dfs(j, k);
   }
 
   for (let i = 0; i < n; i++) if (allowedStart[i]) dfs(i, 0);

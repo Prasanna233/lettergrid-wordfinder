@@ -150,3 +150,7 @@ main[hidden], [hidden] { display: none !important; }
 .heavy.left { border-left-color: var(--orange); }
 .heavy.right { border-left: 0; border-right: 4px solid var(--blue); }
 .res .fu { color: var(--warn); font-weight: 700; }
+
+.half-ctl { display: grid; gap: 6px; margin: 0 0 10px; }
+.half-seg button { font-size: 13px; }
+.board .cell.off { filter: brightness(.35) saturate(.4); }
