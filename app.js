@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=10');
+  const worker = new Worker('solver.worker.js?v=11');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -37,8 +37,11 @@
       $('#solveBtn').textContent = 'Find words';
       updateSolveBtn();
       lastTotal = m.total; lastTimedOut = m.timedOut;
+      computeWin();
+      renderMainBoard();
       renderResults(true);
       $('#resultsCard').hidden = false;
+      syncWinNote();
       $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else if (m.type === 'looked') {
       if (m.id === pzId) renderPuzzle(m);
@@ -271,6 +274,32 @@
     return L === '?' ? '<span class="w">🤔</span>' : (L || '·');
   }
 
+  // ---------------- winning letters & words ----------------
+  let win = null; // { key, cells:Set, land:Set, count }
+  const gridKey = () => grid ? grid.letters.join('') + '|' + grid.state.join('') + '|' + grid.myHome + '|' + grid.rows + 'x' + grid.cols : '';
+  function computeWin() {
+    const cells = new Set(), land = new Set(); let count = 0;
+    for (const r of results) if (r.reaches) {
+      count++;
+      r.path.forEach(c => cells.add(c));
+      (r.winAt || []).forEach(k => land.add(r.path[k]));
+    }
+    win = { key: gridKey(), cells, land, count };
+  }
+  function winFor(i) { return win && win.key === gridKey() ? { on: win.cells.has(i), land: win.land.has(i) } : { on: false, land: false }; }
+  function syncWinNote() {
+    const el = $('#winNote'); if (!el) return;
+    if (!win || win.key !== gridKey() || $('#resultsCard').hidden) { el.hidden = true; $('#lgWin').hidden = true; return; }
+    el.hidden = false;
+    $('#lgWin').hidden = !win.count;
+    el.className = 'win-note' + (win.count ? ' yes' : '');
+    el.innerHTML = win.count
+      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> reach the opponent's base. Gold-outlined letters are used by them; 🏁 marks where they land. <button type="button" class="linkbtn inline" id="winOnly">${settings.fReaches ? 'Show all words' : 'Show only winning words'}</button>`
+      : 'No word reaches the opponent\u2019s base with these settings yet. Try another “Word starts” option or side.';
+    const b = $('#winOnly');
+    if (b) b.addEventListener('click', () => { settings.fReaches = !settings.fReaches; saveSettings(); renderResults(true); syncWinNote(); $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  }
+
   function renderMainBoard() {
     clearTimeout(hvTimer); hvTimer = setTimeout(checkHeavy, 700);
     if (typeof pzBoardChanged === 'function') pzBoardChanged();
@@ -279,11 +308,13 @@
     b.innerHTML = '';
     for (let i = 0; i < grid.rows * grid.cols; i++) {
       const d = document.createElement('div');
-      d.className = cellClass(i) + (grid.conf[i] < 0.5 ? ' low' : '');
-      d.innerHTML = letterHTML(i);
+      const w = winFor(i);
+      d.className = cellClass(i) + (grid.conf[i] < 0.5 ? ' low' : '') + (w.on ? ' win' : '') + (w.land ? ' land' : '');
+      d.innerHTML = letterHTML(i) + (w.land ? '<span class="flag" aria-label="winning letter">🏁</span>' : '');
       d.dataset.i = i;
       b.appendChild(d);
     }
+    syncWinNote();
   }
   $('#board').addEventListener('click', e => {
     const c = e.target.closest('.cell'); if (c) openEditor(+c.dataset.i);
@@ -302,6 +333,7 @@
       if (k !== undefined && wildAt.has(k)) d.innerHTML = `<span class="wl">${res.word[k]}</span>`;
       else d.innerHTML = letterHTML(i);
       if (k !== undefined) d.insertAdjacentHTML('beforeend', `<span class="n">${k + 1}</span>`);
+      if (k !== undefined && res.reaches && (res.winAt || []).includes(k)) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); }
       wrap.appendChild(d);
     }
     if (!res.path.length) return wrap;
@@ -442,7 +474,7 @@
   $('#chips').addEventListener('click', e => {
     const b = e.target.closest('.chip'); if (!b) return;
     if (b.dataset.f === 'cuts') settings.fCuts = !settings.fCuts; else settings.fReaches = !settings.fReaches;
-    saveSettings(); renderResults(true);
+    saveSettings(); renderResults(true); syncWinNote();
   });
   function renderResults(reset) {
     if (reset) { syncChips(); view = sorted(); const filtered = settings.fCuts || settings.fReaches || $('#filterInput').value.trim() || textFilter('#startsInput') || textFilter('#endsInput');
@@ -456,7 +488,8 @@
       const li = document.createElement('li');
       li.dataset.k = k;
       const w = r.word.split('').map((ch, idx) => (r.wild.includes(idx) ? `<span class="wl">${ch}</span>` : ch)).join('');
-      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '🏁' : ''}${r.cuts ? '✂' : ''}${r.whiteHits ? '★' : ''}${r.followUp !== undefined ? `<span class="fu" title="Follow-up words through the wildcard">🤔${r.followUp}</span>` : ''}<span class="len-b">${r.len}</span><span class="sc">${Math.round(r.reaches ? r.score - 1000 : r.score)}</span></span></div>`;
+      if (r.reaches) li.className = 'win';
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.reaches ? '<span class="win-b">🏁 WIN</span>' : ''}${r.cuts ? '✂' : ''}${r.whiteHits ? '★' : ''}${r.followUp !== undefined ? `<span class="fu" title="Follow-up words through the wildcard">🤔${r.followUp}</span>` : ''}<span class="len-b">${r.len}</span><span class="sc">${Math.round(r.reaches ? r.score - 1000 : r.score)}</span></span></div>`;
       frag.appendChild(li);
     }
     ol.appendChild(frag);
@@ -479,7 +512,7 @@
     det.insertAdjacentHTML('beforeend', `<div class="facts">
       <span>Cells gained <b>${r.gained}</b></span><span>Stolen <b>${r.stolen}</b></span>${r.cuts ? `<span>Cuts through <b>${r.cuts}</b> opponent letter${r.cuts > 1 ? 's' : ''}</span>` : ''}
       <span>Rows advanced <b>${r.depthGain}</b></span>${r.whiteHits ? `<span>Capture tiles <b>${r.whiteHits}</b></span>` : ''}
-      ${r.reaches ? '<span><b>🏁 Connects to opponent row</b></span>' : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+      ${r.reaches ? `<span class="win-fact">🏁 <b>Winning word</b> — reaches the opponent's base at ${(r.winAt || []).map(k => `<b>${r.word[k]}</b> (letter ${k + 1})`).join(', ')}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
     li.appendChild(det);
   });
 

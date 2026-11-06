@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 <header class="top">
@@ -56,9 +56,10 @@
       <span class="sub">Tap a cell to fix it</span>
     </div>
     <div class="legend">
-      <span><i class="lg mine"></i>Mine</span><span><i class="lg opp"></i>Opponent</span><span><i class="lg white"></i>Capture tile</span><span><i class="lg low"></i>Check</span>
+      <span><i class="lg mine"></i>Mine</span><span><i class="lg opp"></i>Opponent</span><span><i class="lg white"></i>Capture tile</span><span><i class="lg low"></i>Check</span><span id="lgWin" hidden><i class="lg winl"></i>🏁 Winning letters</span>
     </div>
     <p id="heavyNote" class="heavy" hidden></p>
+    <p id="winNote" class="win-note" hidden></p>
     <div class="half-ctl"><span class="lbl">Words from</span>
       <div class="seg half-seg" id="halfSeg"><button type="button" data-v="both">Both</button><button type="button" data-v="left">⬅ Left</button><button type="button" data-v="center">Centre</button><button type="button" data-v="right">Right ➡</button></div><p class="hint half-hint" hidden></p></div>
     <div id="board" class="board"></div>
@@ -171,7 +172,7 @@
 </div>
 
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="reader.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

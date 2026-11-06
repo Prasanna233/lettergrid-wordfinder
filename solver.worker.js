@@ -141,7 +141,15 @@ function solve(grid, opts) {
     const reaches = after.reaches;
     const len = path.length;
     const s = gained.size * 2 + stolen + depthGain * 4 + len + (reaches ? 1000 : 0);
-    return { gained: gained.size, stolen, cuts, depthGain, whiteHits, reaches, score: s };
+    // winning letters: where the word lands on the opponent's base (or a capture tile that grabs it)
+    let winAt;
+    if (reaches) {
+      winAt = [];
+      path.forEach((c, k) => { if (Math.floor(c / cols) === oppHomeRow) winAt.push(k); });
+      if (!winAt.length) path.forEach((c, k) => { if (white[c] && nbrs[c].some(j => Math.floor(j / cols) === oppHomeRow)) winAt.push(k); });
+      if (!winAt.length) { let b = 0; path.forEach((c, k) => { if (depthOf(c) > depthOf(path[b])) b = k; }); winAt.push(b); }
+    }
+    return { gained: gained.size, stolen, cuts, depthGain, whiteHits, reaches, winAt, score: s };
   }
 
   function record(node) {
