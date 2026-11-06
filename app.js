@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=12');
+  const worker = new Worker('solver.worker.js?v=13');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -227,6 +227,7 @@
   }
   function renderHeavy(m) {
     computeWin(m.results); paintBoard();
+    if (typeof syncPzBoard === 'function' && !$('#puzzleView').hidden) syncPzBoard();
     const mid = (grid.cols - 1) / 2;
     let L = 0, R = 0;
     for (const r of m.results) {
@@ -351,6 +352,7 @@
       d.className = cellClass(i) + (k === undefined ? (res.path.length ? ' dim' : '') : ' on');
       if (k !== undefined && wildAt.has(k)) d.innerHTML = `<span class="wl">${res.word[k]}</span>`;
       else d.innerHTML = letterHTML(i);
+      if (!res.path.length) { const w = winFor(i); if (w.on) d.classList.add('win'); if (w.land) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); } }
       if (k !== undefined) d.insertAdjacentHTML('beforeend', `<span class="n">${k + 1}</span>`);
       if (k !== undefined && res.reaches && (res.winAt || []).includes(k)) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); }
       wrap.appendChild(d);
