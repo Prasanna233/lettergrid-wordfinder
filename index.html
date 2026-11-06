@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <header class="top">
@@ -59,18 +59,14 @@
       <span><i class="lg mine"></i>Mine</span><span><i class="lg opp"></i>Opponent</span><span><i class="lg white"></i>Capture tile</span><span><i class="lg low"></i>Check</span><span id="lgWin" hidden><i class="lg winl"></i>🏁 Winning letters</span>
     </div>
     <p id="heavyNote" class="heavy" hidden></p>
+    <div class="side-ctl"><span class="lbl">I play from</span>
+      <div class="seg" id="sideSeg"><button type="button" data-v="top">⬆ Top</button><button type="button" data-v="bottom">⬇ Bottom</button></div></div>
     <p id="winNote" class="win-note" hidden></p>
     <div class="half-ctl"><span class="lbl">Words from</span>
       <div class="seg half-seg" id="halfSeg"><button type="button" data-v="both">Both</button><button type="button" data-v="left">⬅ Left</button><button type="button" data-v="center">Centre</button><button type="button" data-v="right">Right ➡</button></div><p class="hint half-hint" hidden></p></div>
     <div id="board" class="board"></div>
 
     <div class="controls">
-      <div class="ctl">
-        <span class="lbl">My side</span>
-        <div class="seg" id="sideSeg">
-          <button data-v="top">Top</button><button data-v="bottom">Bottom</button>
-        </div>
-      </div>
       <div class="ctl">
         <span class="lbl">Word starts</span>
         <div class="seg seg-2x2" id="startSeg">
@@ -131,6 +127,8 @@
         </div>
         <input id="pzFile" type="file" accept="image/*" hidden>
         <p id="pzBoardInfo" class="hint"></p>
+        <div class="side-ctl"><span class="lbl">I play from</span>
+      <div class="seg" id="pzSideSeg"><button type="button" data-v="top">⬆ Top</button><button type="button" data-v="bottom">⬇ Bottom</button></div></div>
         <p id="pzHeavy" class="heavy" hidden></p>
         <div class="half-ctl"><span class="lbl">Words from</span>
       <div class="seg half-seg" id="pzHalfSeg"><button type="button" data-v="both">Both</button><button type="button" data-v="left">⬅ Left</button><button type="button" data-v="center">Centre</button><button type="button" data-v="right">Right ➡</button></div><p class="hint half-hint" hidden></p></div>
@@ -171,9 +169,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 13 · Nov 6</p>
+<p class="app-ver">Version 14 · Nov 6</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="reader.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=13');
+  const worker = new Worker('solver.worker.js?v=14');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -301,8 +301,8 @@
     $('#lgWin').hidden = !win.count;
     el.className = 'win-note' + (win.count ? ' yes' : '');
     el.innerHTML = win.count
-      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> on this board, from any starting position and either side. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
-      : 'No word can reach the opponent\u2019s base from your territory on this board yet.';
+      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
+      : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
     const b = $('#winOnly');
     if (b) b.addEventListener('click', () => {
       if (showingAllWins()) { settings.fReaches = false; saveSettings(); renderResults(true); syncWinNote(); return; }
@@ -417,7 +417,7 @@
   }
   fillLen();
   function syncControls() {
-    $('#sideSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === grid.myHome));
+    syncSide();
     $('#startSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === settings.start));
     $('#minLen').value = settings.minLen; $('#maxLen').value = settings.maxLen;
     $('#sortSel').value = settings.sort;
@@ -429,11 +429,16 @@
     if (!dictReady) b.textContent = 'Loading dictionary…';
     else if (b.textContent.startsWith('Loading')) b.textContent = 'Find words';
   }
-  $('#sideSeg').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b || !grid) return;
+  function syncSide() {
+    for (const id of ['#sideSeg', '#pzSideSeg']) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', !!grid && b.dataset.v === grid.myHome));
+  }
+  // switching sides recomputes the winning letters (they depend on which base is the opponent's)
+  for (const id of ['#sideSeg', '#pzSideSeg']) $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !grid || b.dataset.v === grid.myHome) return;
     grid.myHome = b.dataset.v;
     grid.myColor = grid.myHome === 'top' ? grid.topColor : other(grid.topColor);
     syncControls(); renderMainBoard();
+    if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();   // keep the word list in step
   });
   $('#startSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -581,6 +586,7 @@
   function pzBoardChanged() { pzCache = null; pzSel = null; if (!$('#puzzleView').hidden) { syncPzBoard(); runPuzzle(); } }
   function syncPzBoard() {
     if (pzSrc() !== 'board') return;
+    syncSide(); $('#pzSideSeg').parentElement.hidden = !grid;
     $('#pzFileLbl').textContent = grid ? 'Change screenshot' : 'Add screenshot';
     const low = grid ? grid.conf.filter(c => c < 0.5).length : 0;
     $('#pzBoardInfo').innerHTML = !grid ? 'Add a screenshot of the game. Words are traced through touching letters (diagonals too), each cell once.'
