@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=11');
+  const worker = new Worker('solver.worker.js?v=12');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -37,8 +37,6 @@
       $('#solveBtn').textContent = 'Find words';
       updateSolveBtn();
       lastTotal = m.total; lastTimedOut = m.timedOut;
-      computeWin();
-      renderMainBoard();
       renderResults(true);
       $('#resultsCard').hidden = false;
       syncWinNote();
@@ -228,6 +226,7 @@
     });
   }
   function renderHeavy(m) {
+    computeWin(m.results); paintBoard();
     const mid = (grid.cols - 1) / 2;
     let L = 0, R = 0;
     for (const r of m.results) {
@@ -277,9 +276,11 @@
   // ---------------- winning letters & words ----------------
   let win = null; // { key, cells:Set, land:Set, count }
   const gridKey = () => grid ? grid.letters.join('') + '|' + grid.state.join('') + '|' + grid.myHome + '|' + grid.rows + 'x' + grid.cols : '';
-  function computeWin() {
+  // computed from a board-wide search (any start position, both sides), so it ignores the
+  // "Word starts" and Left/Centre/Right settings and appears as soon as a board is loaded
+  function computeWin(list) {
     const cells = new Set(), land = new Set(); let count = 0;
-    for (const r of results) if (r.reaches) {
+    for (const r of list) if (r.reaches) {
       count++;
       r.path.forEach(c => cells.add(c));
       (r.winAt || []).forEach(k => land.add(r.path[k]));
@@ -289,20 +290,38 @@
   function winFor(i) { return win && win.key === gridKey() ? { on: win.cells.has(i), land: win.land.has(i) } : { on: false, land: false }; }
   function syncWinNote() {
     const el = $('#winNote'); if (!el) return;
-    if (!win || win.key !== gridKey() || $('#resultsCard').hidden) { el.hidden = true; $('#lgWin').hidden = true; return; }
+    if (!grid) { el.hidden = true; $('#lgWin').hidden = true; return; }
+    if (!win || win.key !== gridKey()) {
+      $('#lgWin').hidden = true; el.className = 'win-note';
+      el.textContent = dictReady ? 'Finding winning letters…' : 'Winning letters will be marked once the dictionary loads.';
+      el.hidden = false; return;
+    }
     el.hidden = false;
     $('#lgWin').hidden = !win.count;
     el.className = 'win-note' + (win.count ? ' yes' : '');
     el.innerHTML = win.count
-      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> reach the opponent's base. Gold-outlined letters are used by them; 🏁 marks where they land. <button type="button" class="linkbtn inline" id="winOnly">${settings.fReaches ? 'Show all words' : 'Show only winning words'}</button>`
-      : 'No word reaches the opponent\u2019s base with these settings yet. Try another “Word starts” option or side.';
+      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> on this board, from any starting position and either side. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
+      : 'No word can reach the opponent\u2019s base from your territory on this board yet.';
     const b = $('#winOnly');
-    if (b) b.addEventListener('click', () => { settings.fReaches = !settings.fReaches; saveSettings(); renderResults(true); syncWinNote(); $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    if (b) b.addEventListener('click', () => {
+      if (showingAllWins()) { settings.fReaches = false; saveSettings(); renderResults(true); syncWinNote(); return; }
+      // list every winning word: search from any start, both sides, winning filter on
+      settings.start = 'anywhere'; settings.half = 'both'; settings.fReaches = true; saveSettings();
+      syncControls(); syncHalf(); renderMainBoard();
+      $('#solveBtn').click();
+    });
   }
+
+  function showingAllWins() { return settings.fReaches && settings.start === 'anywhere' && half() === 'both' && !$('#resultsCard').hidden; }
 
   function renderMainBoard() {
     clearTimeout(hvTimer); hvTimer = setTimeout(checkHeavy, 700);
     if (typeof pzBoardChanged === 'function') pzBoardChanged();
+    paintBoard();
+  }
+  // draws the board only (no background searches), so it is safe to call from search results
+  function paintBoard() {
+    if (!grid) return;
     const b = $('#board');
     b.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; b.style.setProperty('--cols', grid.cols);
     b.innerHTML = '';

@@ -169,3 +169,7 @@ main[hidden], [hidden] { display: none !important; }
 .win-b { background: #ffcf3f; color: #1a1400; font-weight: 800; font-size: 11px; border-radius: 6px; padding: 2px 6px; letter-spacing: .5px; white-space: nowrap; }
 .win-fact { color: #ffdf7a; }
 .res .word .wl { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.board .cell.off.win { filter: brightness(.7); }
+.res { flex-wrap: wrap; row-gap: 4px; }
+.res .word { overflow-wrap: normal; word-break: keep-all; flex: 1 0 auto; max-width: 100%; }
+.res .meta { margin-left: auto; }
