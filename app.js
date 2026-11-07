@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=15');
+  const worker = new Worker('solver.worker.js?v=17');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -193,7 +193,7 @@
     $('#boardCard').hidden = false;
     $('#resultsCard').hidden = true;
     size.cols = grid.cols; size.rows = grid.rows; syncSize();
-    syncControls();
+    syncControls(); syncStage();
     renderMainBoard();
     if (!$('#gridView').hidden) $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -202,20 +202,52 @@
   // A new game has nothing captured apart from the two home rows. For those boards the word list
   // opens automatically, sorted with words that reach the opponent first, then the ones that get closest.
   let pendingFresh = false;
-  function isFresh() {
-    if (!grid) return false;
+  // Which of my turns this board is, judged from the cells I have captured outside the home rows:
+  //   1 = my first word (nothing captured yet; the game's opening word is exactly 7 letters)
+  //   2 = my second word (one word on the board: up to 7 cells, plus up to 8 more from a capture tile)
+  //   0 = later in the game
+  function myCaptured() {
+    let n = 0;
     for (let i = 0; i < grid.rows * grid.cols; i++) {
       const r = Math.floor(i / grid.cols);
-      if (r === 0 || r === grid.rows - 1) continue;
-      if (grid.state[i] === 'O' || grid.state[i] === 'B') return false;
+      if (r !== 0 && r !== grid.rows - 1 && grid.state[i] === grid.myColor) n++;
     }
-    return true;
+    return n;
   }
+  function guessStage() { const n = myCaptured(); return n === 0 ? 1 : n <= 15 ? 2 : 0; }
+  // the guess can be corrected with the "This is my" switch (stored on the board)
+  function turnStage() { if (!grid) return 0; return grid.stage !== undefined ? grid.stage : guessStage(); }
+  function syncStage() {
+    const st = turnStage(), v = ['later', 'first', 'second'][st];
+    $('#stageSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $('#stageHint').textContent = grid && grid.stage === undefined ? 'Guessed from the board — tap to correct.' : '';
+  }
+  $('#stageSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !grid) return;
+    grid.stage = { first: 1, second: 2, later: 0 }[b.dataset.v];
+    freshStart();
+    if (!turnStage() && dictReady) $('#solveBtn').click();
+  });
+  function isFresh() { return turnStage() === 1; }
   function freshStart() {
-    if (!isFresh()) { $('#freshNote').hidden = true; return; }
-    settings.sort = 'reach'; settings.start = 'mine'; settings.fReaches = false; saveSettings();
-    syncControls();
-    $('#freshNote').hidden = false;
+    const stage = turnStage(), note = $('#freshNote');
+    syncStage();
+    if (!stage) {
+      note.hidden = true;
+      if (settings.autoLen) { settings.minLen = 4; settings.maxLen = 20; settings.autoLen = false; }
+      if (settings.autoSort) { settings.sort = 'score'; settings.autoSort = false; }
+      saveSettings(); syncControls(); paintBoard();
+      return;
+    }
+    settings.sort = 'reach'; settings.autoSort = true; settings.start = 'mine'; settings.fReaches = false;
+    if (stage === 1) { settings.minLen = 7; settings.maxLen = 7; settings.autoLen = true; }
+    else if (settings.autoLen) { settings.minLen = 4; settings.maxLen = 20; settings.autoLen = false; }
+    saveSettings(); syncControls();
+    note.innerHTML = stage === 1
+      ? '🆕 <b>Your first word</b> — the opening word is exactly <b>7 letters</b>, so it can\u2019t reach the opponent\u2019s base yet. These 7-letter words start on your home row; the ones that get closest to the opponent come first.'
+      : '2️⃣ <b>Your second word</b> — words that <b>reach the opponent\u2019s base</b> come first (🏁 WIN), then the ones that get closest to it, longest first.';
+    note.hidden = false;
+    paintBoard();
     if (dictReady) runFresh(); else pendingFresh = true;
   }
   function runFresh() { pendingFresh = false; freshRun = true; $('#solveBtn').click(); }
@@ -326,10 +358,10 @@
     el.hidden = false;
     $('#lgWin').hidden = !win.count;
     el.className = 'win-note' + (win.count ? ' yes' : '');
-    el.innerHTML = win.count
+    el.innerHTML = win.count && !isFresh()
       ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
       : isFresh()
-        ? `🆕 <b>Fresh board</b> — no single word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) in one move. The opening words that get closest are listed below. <button type="button" class="linkbtn inline" id="seeOpening">See opening words</button>`
+        ? `🆕 <b>Your first word</b> is 7 letters, so it can\u2019t reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) yet. The 7-letter words that get closest are listed below. <button type="button" class="linkbtn inline" id="seeOpening">See opening words</button>`
         : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
     const so = $('#seeOpening');
     if (so) so.addEventListener('click', () => { if ($('#resultsCard').hidden) runFresh(); else $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -468,7 +500,8 @@
     grid.myHome = b.dataset.v;
     grid.myColor = grid.myHome === 'top' ? grid.topColor : other(grid.topColor);
     syncControls(); renderMainBoard();
-    if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();   // keep the word list in step
+    if (turnStage()) freshStart();
+    else if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();   // keep the word list in step
   });
   $('#startSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -476,7 +509,7 @@
   });
   $('#minLen').addEventListener('change', e => { settings.minLen = +e.target.value; if (settings.maxLen < settings.minLen) settings.maxLen = settings.minLen; saveSettings(); syncControls(); });
   $('#maxLen').addEventListener('change', e => { settings.maxLen = +e.target.value; if (settings.minLen > settings.maxLen) settings.minLen = settings.maxLen; saveSettings(); syncControls(); });
-  $('#sortSel').addEventListener('change', e => { settings.sort = e.target.value; saveSettings(); if (settings.sort !== 'reach') $('#freshNote').hidden = true; renderResults(true); });
+  $('#sortSel').addEventListener('change', e => { settings.sort = e.target.value; settings.autoSort = false; saveSettings(); if (settings.sort !== 'reach') $('#freshNote').hidden = true; renderResults(true); });
   for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).addEventListener('input', () => renderResults(true));
   $('#clearFilters').addEventListener('click', () => {
     for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).value = '';

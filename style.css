@@ -178,3 +178,6 @@ main[hidden], [hidden] { display: none !important; }
 .app-ver { text-align: center; color: #555; font-size: 11px; margin: 4px 0 24px; }
 .side-ctl { display: grid; gap: 6px; margin: 0 0 10px; }
 .side-ctl .seg button { font-weight: 600; }
+#stageSeg button { font-size: 13px; }
+#stageHint:empty { display: none; }
+.stage-hint { margin: 0 !important; font-size: 12px; }
