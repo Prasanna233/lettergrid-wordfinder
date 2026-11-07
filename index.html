@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 <header class="top">
@@ -87,6 +87,7 @@
     <div class="card-head">
       <h2 id="resTitle">Words</h2>
       <select id="sortSel" aria-label="Sort">
+        <option value="reach">Reach opponent first</option>
         <option value="score">Best move</option>
         <option value="len">Longest</option>
         <option value="gained">Most cells</option>
@@ -94,6 +95,7 @@
         <option value="alpha">A–Z</option>
       </select>
     </div>
+    <p id="freshNote" class="win-note yes" hidden>🆕 <b>Fresh board.</b> Opening words: words that reach the opponent's base come first, then the ones that get closest to it (most rows advanced), longest first.</p>
     <div class="chips" id="chips">
       <button class="chip" data-f="cuts" aria-pressed="false">✂ Cuts through opponent <span class="cnt"></span></button>
       <button class="chip" data-f="reaches" aria-pressed="false">🏁 Reaches opponent end <span class="cnt"></span></button>
@@ -169,9 +171,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 14 · Nov 6</p>
+<p class="app-ver">Version 15 · Nov 7</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="reader.js?v=15"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

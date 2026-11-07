@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=14');
+  const worker = new Worker('solver.worker.js?v=15');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -28,6 +28,7 @@
       updateSolveBtn();
       runPuzzle();
       if (grid) checkHeavy();
+      if (pendingFresh && grid) runFresh();
     } else if (m.type === 'solved' && typeof m.id === 'string') {
       if (m.id === 'pz' + pzId) pzSolved(m);
       else if (m.id === 'hv' + hvId) renderHeavy(m);
@@ -40,7 +41,8 @@
       renderResults(true);
       $('#resultsCard').hidden = false;
       syncWinNote();
-      $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!freshRun && !$('#gridView').hidden) $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      freshRun = false;
     } else if (m.type === 'looked') {
       if (m.id === pzId) renderPuzzle(m);
     } else if (m.type === 'error') {
@@ -111,6 +113,7 @@
       const low = grid.conf.filter(c => c < 0.5).length;
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
       afterGridLoaded();
+      freshStart();
     } catch (err) {
       showMsg((err && err.message ? err.message : String(err)) + ' You can type the grid manually instead.');
       if (!$('#puzzleView').hidden) $('#pzBoardInfo').textContent = (err && err.message ? err.message : String(err)) + ' Try another screenshot, or type the board in the Grid solver tab.';
@@ -194,6 +197,29 @@
     renderMainBoard();
     if (!$('#gridView').hidden) $('#boardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  // ---------------- fresh board: opening words ----------------
+  // A new game has nothing captured apart from the two home rows. For those boards the word list
+  // opens automatically, sorted with words that reach the opponent first, then the ones that get closest.
+  let pendingFresh = false;
+  function isFresh() {
+    if (!grid) return false;
+    for (let i = 0; i < grid.rows * grid.cols; i++) {
+      const r = Math.floor(i / grid.cols);
+      if (r === 0 || r === grid.rows - 1) continue;
+      if (grid.state[i] === 'O' || grid.state[i] === 'B') return false;
+    }
+    return true;
+  }
+  function freshStart() {
+    if (!isFresh()) { $('#freshNote').hidden = true; return; }
+    settings.sort = 'reach'; settings.start = 'mine'; settings.fReaches = false; saveSettings();
+    syncControls();
+    $('#freshNote').hidden = false;
+    if (dictReady) runFresh(); else pendingFresh = true;
+  }
+  function runFresh() { pendingFresh = false; freshRun = true; $('#solveBtn').click(); }
+  let freshRun = false;
 
   // ---------------- left / right half picker ----------------
   const half = () => settings.half || 'both';
@@ -302,7 +328,11 @@
     el.className = 'win-note' + (win.count ? ' yes' : '');
     el.innerHTML = win.count
       ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
-      : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
+      : isFresh()
+        ? `🆕 <b>Fresh board</b> — no single word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) in one move. The opening words that get closest are listed below. <button type="button" class="linkbtn inline" id="seeOpening">See opening words</button>`
+        : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
+    const so = $('#seeOpening');
+    if (so) so.addEventListener('click', () => { if ($('#resultsCard').hidden) runFresh(); else $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     const b = $('#winOnly');
     if (b) b.addEventListener('click', () => {
       if (showingAllWins()) { settings.fReaches = false; saveSettings(); renderResults(true); syncWinNote(); return; }
@@ -446,7 +476,7 @@
   });
   $('#minLen').addEventListener('change', e => { settings.minLen = +e.target.value; if (settings.maxLen < settings.minLen) settings.maxLen = settings.minLen; saveSettings(); syncControls(); });
   $('#maxLen').addEventListener('change', e => { settings.maxLen = +e.target.value; if (settings.minLen > settings.maxLen) settings.minLen = settings.maxLen; saveSettings(); syncControls(); });
-  $('#sortSel').addEventListener('change', e => { settings.sort = e.target.value; saveSettings(); renderResults(true); });
+  $('#sortSel').addEventListener('change', e => { settings.sort = e.target.value; saveSettings(); if (settings.sort !== 'reach') $('#freshNote').hidden = true; renderResults(true); });
   for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).addEventListener('input', () => renderResults(true));
   $('#clearFilters').addEventListener('click', () => {
     for (const id of ['#filterInput', '#startsInput', '#endsInput']) $(id).value = '';
@@ -481,6 +511,7 @@
     const s = settings.sort;
     const cmp = {
       score: (a, b) => b.score - a.score || b.len - a.len,
+      reach: (a, b) => (b.reaches - a.reaches) || b.depthGain - a.depthGain || b.len - a.len || b.score - a.score,
       len: (a, b) => b.len - a.len || b.score - a.score,
       gained: (a, b) => b.gained - a.gained || b.score - a.score,
       depth: (a, b) => b.depthGain - a.depthGain || b.score - a.score,
