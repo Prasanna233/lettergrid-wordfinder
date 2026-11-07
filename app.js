@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=17');
+  const worker = new Worker('solver.worker.js?v=18');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -349,17 +349,16 @@
   function winFor(i) { return win && win.key === gridKey() ? { on: win.cells.has(i), land: win.land.has(i) } : { on: false, land: false }; }
   function syncWinNote() {
     const el = $('#winNote'); if (!el) return;
-    if (!grid) { el.hidden = true; $('#lgWin').hidden = true; return; }
+    if (!grid) { el.hidden = true; return; }
     if (!win || win.key !== gridKey()) {
-      $('#lgWin').hidden = true; el.className = 'win-note';
-      el.textContent = dictReady ? 'Finding winning letters…' : 'Winning letters will be marked once the dictionary loads.';
+      el.className = 'win-note';
+      el.textContent = dictReady ? 'Finding winning words…' : 'Winning words will be counted once the dictionary loads.';
       el.hidden = false; return;
     }
     el.hidden = false;
-    $('#lgWin').hidden = !win.count;
     el.className = 'win-note' + (win.count ? ' yes' : '');
     el.innerHTML = win.count && !isFresh()
-      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. Gold-outlined letters are used by them; 🏁 marks where they land on the opponent's base. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
+      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
       : isFresh()
         ? `🆕 <b>Your first word</b> is 7 letters, so it can\u2019t reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) yet. The 7-letter words that get closest are listed below. <button type="button" class="linkbtn inline" id="seeOpening">See opening words</button>`
         : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
@@ -390,9 +389,8 @@
     b.innerHTML = '';
     for (let i = 0; i < grid.rows * grid.cols; i++) {
       const d = document.createElement('div');
-      const w = winFor(i);
-      d.className = cellClass(i) + (grid.conf[i] < 0.5 ? ' low' : '') + (w.on ? ' win' : '') + (w.land ? ' land' : '');
-      d.innerHTML = letterHTML(i) + (w.land ? '<span class="flag" aria-label="winning letter">🏁</span>' : '');
+      d.className = cellClass(i) + (grid.conf[i] < 0.5 ? ' low' : '');
+      d.innerHTML = letterHTML(i);
       d.dataset.i = i;
       b.appendChild(d);
     }
@@ -414,7 +412,6 @@
       d.className = cellClass(i) + (k === undefined ? (res.path.length ? ' dim' : '') : ' on');
       if (k !== undefined && wildAt.has(k)) d.innerHTML = `<span class="wl">${res.word[k]}</span>`;
       else d.innerHTML = letterHTML(i);
-      if (!res.path.length) { const w = winFor(i); if (w.on) d.classList.add('win'); if (w.land) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); } }
       if (k !== undefined) d.insertAdjacentHTML('beforeend', `<span class="n">${k + 1}</span>`);
       if (k !== undefined && res.reaches && (res.winAt || []).includes(k)) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); }
       wrap.appendChild(d);
