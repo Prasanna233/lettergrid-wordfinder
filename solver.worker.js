@@ -113,6 +113,12 @@ function solve(grid, opts) {
   for (let i = 0; i < n; i++) {
     if (!letters[i] || !inSide[i]) continue;
     if (opts.start === 'anywhere') allowedStart[i] = 1;
+    // winning-word rule: first letter on a free cell touching my cells, and not touching any cell the
+    // opponent has captured (their home row doesn't count)
+    else if (opts.start === 'frontier') {
+      const oppCap = j => opp[j] && Math.floor(j / cols) !== oppHomeRow;
+      if (!mine[i] && !opp[i] && nbrs[i].some(j => mine[j]) && !nbrs[i].some(oppCap)) allowedStart[i] = 1;
+    }
     else if (opts.start === 'opp') { if (opp[i]) allowedStart[i] = 1; }
     else if (mine[i]) allowedStart[i] = 1;
     else if (opts.start === 'adjacent' && nbrs[i].some(j => mine[j])) allowedStart[i] = 1;

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=18');
+  const worker = new Worker('solver.worker.js?v=19');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -32,6 +32,7 @@
     } else if (m.type === 'solved' && typeof m.id === 'string') {
       if (m.id === 'pz' + pzId) pzSolved(m);
       else if (m.id === 'hv' + hvId) renderHeavy(m);
+      else if (m.id === 'wn' + wnId) { computeWin(m.results); paintBoard(); }
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
@@ -215,19 +216,8 @@
     return n;
   }
   function guessStage() { const n = myCaptured(); return n === 0 ? 1 : n <= 15 ? 2 : 0; }
-  // the guess can be corrected with the "This is my" switch (stored on the board)
-  function turnStage() { if (!grid) return 0; return grid.stage !== undefined ? grid.stage : guessStage(); }
-  function syncStage() {
-    const st = turnStage(), v = ['later', 'first', 'second'][st];
-    $('#stageSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-    $('#stageHint').textContent = grid && grid.stage === undefined ? 'Guessed from the board — tap to correct.' : '';
-  }
-  $('#stageSeg').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b || !grid) return;
-    grid.stage = { first: 1, second: 2, later: 0 }[b.dataset.v];
-    freshStart();
-    if (!turnStage() && dictReady) $('#solveBtn').click();
-  });
+  function turnStage() { return grid ? guessStage() : 0; }
+  function syncStage() {}
   function isFresh() { return turnStage() === 1; }
   function freshStart() {
     const stage = turnStage(), note = $('#freshNote');
@@ -282,10 +272,14 @@
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
       opts: { minLen: 4, maxLen: 20, start: 'anywhere', limit: 200000, wildFollowUp: false },
     });
+    worker.postMessage({
+      type: 'solve', id: 'wn' + (++wnId),
+      grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
+      opts: { minLen: 4, maxLen: 20, start: 'frontier', limit: 200000, wildFollowUp: false },
+    });
   }
+  let wnId = 0;
   function renderHeavy(m) {
-    computeWin(m.results); paintBoard();
-    if (typeof syncPzBoard === 'function' && !$('#puzzleView').hidden) syncPzBoard();
     const mid = (grid.cols - 1) / 2;
     let L = 0, R = 0;
     for (const r of m.results) {
@@ -358,23 +352,24 @@
     el.hidden = false;
     el.className = 'win-note' + (win.count ? ' yes' : '');
     el.innerHTML = win.count && !isFresh()
-      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), from any starting position. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
+      ? `🏁 <b>${win.count.toLocaleString()} winning word${win.count > 1 ? 's' : ''}</b> for you (playing from the <b>${grid.myHome}</b>, reaching the ${grid.myHome === 'top' ? 'bottom' : 'top'} row), starting next to your cells and away from the opponent\u2019s. <button type="button" class="linkbtn inline" id="winOnly">${showingAllWins() ? 'Show all words' : 'List them'}</button>`
       : isFresh()
         ? `🆕 <b>Your first word</b> is 7 letters, so it can\u2019t reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) yet. The 7-letter words that get closest are listed below. <button type="button" class="linkbtn inline" id="seeOpening">See opening words</button>`
-        : `No word can reach the opponent\u2019s base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row) from your territory on this board yet.`;
+        : `No winning word yet: none that starts next to your cells (away from the opponent\u2019s) reaches their base (the ${grid.myHome === 'top' ? 'bottom' : 'top'} row).`;
     const so = $('#seeOpening');
     if (so) so.addEventListener('click', () => { if ($('#resultsCard').hidden) runFresh(); else $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     const b = $('#winOnly');
     if (b) b.addEventListener('click', () => {
-      if (showingAllWins()) { settings.fReaches = false; saveSettings(); renderResults(true); syncWinNote(); return; }
-      // list every winning word: search from any start, both sides, winning filter on
-      settings.start = 'anywhere'; settings.half = 'both'; settings.fReaches = true; saveSettings();
-      syncControls(); syncHalf(); renderMainBoard();
+      if (showingAllWins()) { winList = false; settings.fReaches = false; saveSettings(); $('#solveBtn').click(); return; }
+      // list the winning words: same start rule as the count, both sides, winning filter on
+      winList = true; settings.half = 'both'; settings.fReaches = true; saveSettings();
+      syncHalf(); renderMainBoard();
       $('#solveBtn').click();
     });
   }
 
-  function showingAllWins() { return settings.fReaches && settings.start === 'anywhere' && half() === 'both' && !$('#resultsCard').hidden; }
+  let winList = false;   // true while the list shows the winning words from the note
+  function showingAllWins() { return winList && settings.fReaches && !$('#resultsCard').hidden; }
 
   function renderMainBoard() {
     clearTimeout(hvTimer); hvTimer = setTimeout(checkHeavy, 700);
@@ -502,7 +497,7 @@
   });
   $('#startSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    settings.start = b.dataset.v; saveSettings(); syncControls();
+    settings.start = b.dataset.v; winList = false; saveSettings(); syncControls();
   });
   $('#minLen').addEventListener('change', e => { settings.minLen = +e.target.value; if (settings.maxLen < settings.minLen) settings.maxLen = settings.minLen; saveSettings(); syncControls(); });
   $('#maxLen').addEventListener('change', e => { settings.maxLen = +e.target.value; if (settings.minLen > settings.maxLen) settings.minLen = settings.maxLen; saveSettings(); syncControls(); });
@@ -513,14 +508,15 @@
     settings.fCuts = settings.fReaches = false; saveSettings(); renderResults(true);
   });
 
-  $('#solveBtn').addEventListener('click', () => {
+  $('#solveBtn').addEventListener('click', e => {
     if (!grid || !dictReady) return;
+    if (e.isTrusted) winList = false;   // a real tap on Find words goes back to the normal search
     solveId++;
     $('#solveBtn').disabled = true; $('#solveBtn').textContent = 'Searching…';
     worker.postMessage({
       type: 'solve', id: solveId,
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: settings.minLen, maxLen: settings.maxLen, start: settings.start, side: half(), limit: 20000 },
+      opts: { minLen: winList ? 4 : settings.minLen, maxLen: winList ? 20 : settings.maxLen, start: winList ? 'frontier' : settings.start, side: half(), limit: 20000 },
     });
   });
 
