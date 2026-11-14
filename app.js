@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=20');
+  const worker = new Worker('solver.worker.js?v=21');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -33,6 +33,8 @@
       if (m.id === 'pz' + pzId) pzSolved(m);
       else if (m.id === 'hv' + hvId) renderHeavy(m);
       else if (m.id === 'wn' + wnId) { computeWin(m.results); paintBoard(); }
+      else if (m.id === 'wpme' + wpId) { wpPart.me = m; renderWinPct(); }
+      else if (m.id === 'wpop' + wpId) { wpPart.op = m; renderWinPct(); }
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
@@ -113,6 +115,7 @@
       r.cells.flat().forEach((c, i) => { grid.letters[i] = c.letter; grid.state[i] = c.state; grid.conf[i] = c.conf; });
       const low = grid.conf.filter(c => c < 0.5).length;
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
+      wpNewUpload = true;
       afterGridLoaded();
       freshStart();
     } catch (err) {
@@ -189,7 +192,7 @@
   });
 
   function afterGridLoaded() {
-    heavyText = ''; $('#heavyNote').hidden = true; syncHeavyPz(); syncHalf();
+    heavyText = ''; $('#heavyNote').hidden = true; $('#winPct').hidden = true; syncHeavyPz(); syncHalf();
     results = []; openIdx = -1;
     $('#boardCard').hidden = false;
     $('#resultsCard').hidden = true;
@@ -272,6 +275,7 @@
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
       opts: { minLen: 4, maxLen: 20, start: 'anywhere', limit: 200000, wildFollowUp: false },
     });
+    checkWinPct();
     worker.postMessage({
       type: 'solve', id: 'wn' + (++wnId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
@@ -279,6 +283,72 @@
     });
   }
   let wnId = 0;
+
+  // ---------------- win chance (estimate) ----------------
+  // Two searches: my best word this turn, and the opponent's best word on their next turn
+  // (their side and colour swapped). A side with nothing captured yet is on its 7-letter opening word.
+  let wpId = 0, wpPart = {}, wpNewUpload = false;
+  function capturedBy(color) {
+    let n = 0;
+    for (let i = 0; i < grid.rows * grid.cols; i++) {
+      const r = Math.floor(i / grid.cols);
+      if (r !== 0 && r !== grid.rows - 1 && grid.state[i] === color) n++;
+    }
+    return n;
+  }
+  function checkWinPct() {
+    if (!grid || !dictReady) return;
+    wpId++; wpPart = { key: gridKey() };
+    const oppColor = other(grid.myColor), oppHome = grid.myHome === 'top' ? 'bottom' : 'top';
+    const base = { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state };
+    const lens = c => capturedBy(c) === 0 ? { minLen: 7, maxLen: 7 } : { minLen: 4, maxLen: 20 };
+    worker.postMessage({ type: 'solve', id: 'wpme' + wpId, grid: { ...base, myColor: grid.myColor, myHome: grid.myHome },
+      opts: { ...lens(grid.myColor), start: 'adjacent', limit: 100000, wildFollowUp: false } });
+    worker.postMessage({ type: 'solve', id: 'wpop' + wpId, grid: { ...base, myColor: oppColor, myHome: oppHome },
+      opts: { ...lens(oppColor), start: 'adjacent', limit: 100000, wildFollowUp: false } });
+  }
+  // one side's outlook: can it win on its next word, and roughly how many of its turns until it reaches the base
+  function outlook(m) {
+    const need = grid.rows - 1 - m.curDepth;        // rows still to cover to touch the other base
+    let wins = 0, push = 0;
+    for (const r of m.results) { if (r.reaches) wins++; if (r.depthGain > push) push = r.depthGain; }
+    const canWin = wins > 0;
+    const turns = canWin ? 1 : 1 + Math.ceil(Math.max(0, need - push) / Math.max(3, push));
+    return { canWin, need, push, turns, words: wins };
+  }
+  function winChance(me, op) {
+    if (me.canWin) return 95;                       // it's my turn: a winning word is on the board
+    if (op.canWin) return 12;                       // they can win next turn unless I block it
+    const mineN = capturedBy(grid.myColor), oppN = capturedBy(other(grid.myColor));
+    const tot = Math.max(1, mineN + oppN);
+    const logit = 1.1 * (op.turns - me.turns + 0.5) + 1.5 * (mineN - oppN) / tot;   // +0.5: I move first
+    return Math.max(5, Math.min(95, Math.round(100 / (1 + Math.exp(-logit)))));
+  }
+  function loadHistory() { try { return JSON.parse(localStorage.getItem('gwf-turns') || '[]'); } catch (e) { return []; } }
+  function saveHistory(h) { try { localStorage.setItem('gwf-turns', JSON.stringify(h.slice(-40))); } catch (e) {} }
+  function renderWinPct() {
+    if (!wpPart.me || !wpPart.op || wpPart.key !== gridKey()) return;
+    const me = outlook(wpPart.me), op = outlook(wpPart.op), pMe = winChance(me, op), pOp = 100 - pMe;
+    // history: a new screenshot adds a turn (a fresh board starts a new game); edits and side switches update it
+    let h = loadHistory();
+    const entry = { me: pMe, op: pOp, t: Date.now() };
+    if (wpNewUpload) { if (turnStage() === 1) h = []; h.push(entry); wpNewUpload = false; }
+    else if (h.length) h[h.length - 1] = entry; else h.push(entry);
+    saveHistory(h);
+    const box = $('#winPct'); box.hidden = false;
+    const why = me.canWin ? `You can win <b>this turn</b> (${me.words.toLocaleString()} word${me.words > 1 ? 's' : ''} to choose from).`
+      : op.canWin ? `⚠️ The opponent can win on their <b>next turn</b> — win first or block their path.`
+      : `You need <b>${me.need}</b> more row${me.need === 1 ? '' : 's'} (best word now: +${me.push}); the opponent needs <b>${op.need}</b> (their best next word: +${op.push}).`;
+    box.innerHTML = `<div class="wp-head"><span class="lbl">Win chance · estimate</span><span class="wp-turn">Turn ${h.length}</span></div>
+      <div class="wp-labels"><span class="wp-l-me">You ${pMe}%</span><span class="wp-l-op">Opponent ${pOp}%</span></div>
+      <div class="wp-bar" role="img" aria-label="You ${pMe} percent, opponent ${pOp} percent"><span class="wp-me" style="width:${pMe}%"></span><span class="wp-op" style="width:${pOp}%"></span></div>
+      <p class="wp-why">${why}</p>
+      ${h.length > 1 ? `<div class="wp-hist">${h.map((x, i) => `<span class="wp-chip${i === h.length - 1 ? ' cur' : ''}"><b>T${i + 1}</b> ${x.me}–${x.op}</span>`).join('')}<button type="button" class="linkbtn inline" id="wpReset">New game</button></div>` : ''}`;
+    const rs = $('#wpReset'); if (rs) rs.addEventListener('click', () => { saveHistory([entry]); renderWinPct(); });
+    // colours follow the players: mine is orange or blue depending on the board
+    box.style.setProperty('--wp-me', grid.myColor === 'O' ? 'var(--orange)' : 'var(--blue)');
+    box.style.setProperty('--wp-op', grid.myColor === 'O' ? 'var(--blue)' : 'var(--orange)');
+  }
   function renderHeavy(m) {
     const mid = (grid.cols - 1) / 2;
     let L = 0, R = 0;

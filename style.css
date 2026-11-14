@@ -183,3 +183,21 @@ main[hidden], [hidden] { display: none !important; }
 .stage-hint { margin: 0 !important; font-size: 12px; }
 .start-ctl { margin: 0 0 10px; }
 .controls .half-ctl { margin: 0; }
+
+/* win chance */
+.win-pct { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #1a1a1a; border: 1px solid var(--line); display: grid; gap: 8px; }
+.wp-head { display: flex; justify-content: space-between; align-items: baseline; }
+.wp-turn { font-size: 12px; color: var(--muted); }
+.wp-bar { display: flex; height: 34px; border-radius: 8px; overflow: hidden; font-weight: 800; font-size: 14px; }
+.wp-bar span { display: flex; align-items: center; white-space: nowrap; overflow: hidden; min-width: 0; padding: 0 8px; transition: width .4s; }
+.wp-me { background: var(--wp-me); justify-content: flex-start; }
+.wp-op { background: var(--wp-op); justify-content: flex-end; }
+.wp-why { margin: 0; font-size: 13px; color: var(--muted); }
+.wp-why b { color: var(--text); }
+.wp-hist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wp-chip { font-size: 12px; background: #151515; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); }
+.wp-chip.cur { border-color: #888; color: var(--text); }
+.wp-bar { height: 12px; border-radius: 6px; }
+.wp-bar span { padding: 0; }
+.wp-labels { display: flex; justify-content: space-between; font-weight: 800; font-size: 17px; }
+.wp-l-me { color: var(--wp-me); } .wp-l-op { color: var(--wp-op); }
