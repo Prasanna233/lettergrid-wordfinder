@@ -181,3 +181,5 @@ main[hidden], [hidden] { display: none !important; }
 #stageSeg button { font-size: 13px; }
 #stageHint:empty { display: none; }
 .stage-hint { margin: 0 !important; font-size: 12px; }
+.start-ctl { margin: 0 0 10px; }
+.controls .half-ctl { margin: 0; }

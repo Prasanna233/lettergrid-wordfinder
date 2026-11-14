@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=19');
+  const worker = new Worker('solver.worker.js?v=20');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
