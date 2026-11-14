@@ -78,6 +78,79 @@
     return o >= b ? 'O' : 'B';
   }
 
+  // ---------- header name blocks ----------
+  // The header bar has one coloured block per player (orange / blue) with the name on the top line.
+  // For each block we return its colour and a small "shape signature" of the name's white text, so the
+  // app can recognise the user's own name on either side of the header in later screenshots.
+  function readHeader(img, boardTop) {
+    const { data, width: W } = img;
+    const rowsY = [];
+    for (let y = 0; y < boardTop; y++) {
+      let n = 0;
+      for (let x = 0; x < W; x += 4) { const p = (y * W + x) * 4; if (isOrange(data[p], data[p + 1], data[p + 2]) || isBlue(data[p], data[p + 1], data[p + 2])) n++; }
+      if (n / (W / 4) > 0.5) rowsY.push(y);
+    }
+    if (rowsY.length < 20) return null;
+    // the longest run of such rows is the bar
+    let best = [rowsY[0], rowsY[0]], cur = [rowsY[0], rowsY[0]];
+    for (let k = 1; k < rowsY.length; k++) {
+      if (rowsY[k] === cur[1] + 1) cur[1] = rowsY[k]; else cur = [rowsY[k], rowsY[k]];
+      if (cur[1] - cur[0] > best[1] - best[0]) best = cur.slice();
+    }
+    const [y0, y1] = best, ym = Math.round((y0 + y1) / 2);
+    // block extents along the middle line of the bar
+    const colorAt = x => { const p = (ym * W + x) * 4; return isOrange(data[p], data[p + 1], data[p + 2]) ? 'O' : isBlue(data[p], data[p + 1], data[p + 2]) ? 'B' : null; };
+    const blocks = [];
+    for (const c of ['O', 'B']) {
+      // longest unbroken run of this colour (ignores thin strips elsewhere in the bar); gaps of a few
+      // pixels (white letters crossing the middle line) don't break a run
+      let bestRun = null, start = -1, gap = 0;
+      for (let x = 0; x <= W; x++) {
+        const on = x < W && colorAt(x) === c;
+        if (on) { if (start < 0) start = x; gap = 0; }
+        else if (start >= 0 && ++gap > 40) {
+          const end = x - gap;
+          if (!bestRun || end - start > bestRun[1] - bestRun[0]) bestRun = [start, end];
+          start = -1; gap = 0;
+        }
+      }
+      if (bestRun) blocks.push({ color: c, x0: bestRun[0], x1: bestRun[1] });
+    }
+    if (blocks.length !== 2) return null;
+    blocks.sort((a, b) => a.x0 - b.x0);
+    const yTop = y0, yName = y0 + Math.round((y1 - y0) * 0.5);   // name sits on the upper half
+    for (const b of blocks) b.sig = nameSig(img, b.x0, yTop, b.x1, yName);
+    return { left: blocks[0], right: blocks[1] };
+  }
+  function nameSig(img, x0, y0, x1, y1) {
+    const { data, width: W } = img;
+    const ink = (x, y) => { const p = (y * W + x) * 4; return Math.min(data[p], data[p + 1], data[p + 2]) > 200 ? 1 : 0; };
+    // stay clear of the bar's white outline: skip the edges and any row that is mostly white (a border line)
+    const mx = Math.round((x1 - x0) * 0.03); x0 += mx; x1 -= mx;
+    const lineRow = y => { let n = 0; for (let x = x0; x < x1; x += 2) n += ink(x, y); return n / ((x1 - x0) / 2) > 0.6; };
+    let bx0 = x1, bx1 = x0, by0 = y1, by1 = y0;
+    for (let y = y0; y < y1; y++) { if (lineRow(y)) continue; for (let x = x0; x < x1; x++) if (ink(x, y)) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; } }
+    if (bx1 <= bx0 || by1 <= by0) return null;
+    const GW = 48, GH = 12, g = [];
+    for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+      const sx0 = bx0 + Math.floor(gx * (bx1 - bx0 + 1) / GW), sx1 = bx0 + Math.floor((gx + 1) * (bx1 - bx0 + 1) / GW);
+      const sy0 = by0 + Math.floor(gy * (by1 - by0 + 1) / GH), sy1 = by0 + Math.floor((gy + 1) * (by1 - by0 + 1) / GH);
+      let s = 0, n = 0;
+      for (let y = sy0; y < Math.max(sy1, sy0 + 1); y++) for (let x = sx0; x < Math.max(sx1, sx0 + 1); x++) { s += ink(x, y); n++; }
+      g.push(Math.round(9 * s / n));
+    }
+    return { a: +((bx1 - bx0 + 1) / (by1 - by0 + 1)).toFixed(3), g: g.join('') };
+  }
+  // 0 = identical; larger = more different
+  function sigDistance(a, b) {
+    if (!a || !b) return Infinity;
+    let d = 0;
+    for (let i = 0; i < a.g.length; i++) { const e = (a.g.charCodeAt(i) - b.g.charCodeAt(i)) / 9; d += e * e; }
+    d /= a.g.length;
+    const ea = Math.log(a.a / b.a);
+    return d + ea * ea;
+  }
+
   // ---------- per-cell analysis ----------
   function analyseCell(img, x0, y0, x1, y1) {
     const { data, width: W } = img;
@@ -185,6 +258,24 @@
   }
   function encodeGlyph(g) { return Array.from(g, v => Math.round(v * 35).toString(36)).join(''); }
 
+  // height of the coloured (orange or blue) stripe band at the top and at the bottom of the board
+  function homeBandHeight(img, b) {
+    const { data, width: W } = img;
+    const colored = y => {
+      let n = 0, t = 0;
+      for (let x = b.left + 2; x < b.right - 2; x += 3) {
+        const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2];
+        t++; if (isOrange(r, g, bl) || isBlue(r, g, bl) || (r > 230 && g > 120 && g < 170 && bl < 90) || (bl > 230 && r > 60 && r < 110)) n++;
+      }
+      return n / t > 0.55;
+    };
+    let top = 0; for (let y = b.top; y < b.bottom && colored(y); y++) top++;
+    let bot = 0; for (let y = b.bottom; y > b.top && colored(y); y--) bot++;
+    const ok = h => h > 20 && h < (b.bottom - b.top) / 4;
+    if (ok(top) && ok(bot)) return (top + bot) / 2;
+    return ok(top) ? top : ok(bot) ? bot : 0;
+  }
+
   // ---------- main entry ----------
   // opts.cols (default 10), opts.rows (auto when omitted)
   function readBoard(img, templates, opts = {}) {
@@ -193,7 +284,10 @@
     const cols = opts.cols || 10;
     const bw = board.right - board.left + 1, bh = board.bottom - board.top + 1;
     const cellW = bw / cols;
-    const rows = opts.rows || Math.max(3, Math.round(bh / (cellW * 0.946)));
+    // The striped home rows are exactly one cell tall, so measure them rather than assuming the
+    // cell shape (it differs between phones and screen layouts).
+    const band = homeBandHeight(img, board);
+    const rows = opts.rows || Math.max(3, Math.round(bh / (band || cellW * 0.946)));
     const cellH = bh / rows;
     const cells = [];
     for (let r = 0; r < rows; r++) {
@@ -218,10 +312,11 @@
     const topO = cells[0].filter(c => c.state === 'O').length, topB = cells[0].filter(c => c.state === 'B').length;
     const topColor = topO >= topB ? 'O' : 'B';
     const myColor = detectMyColor(img, board.top) || 'O';
-    return { rows, cols, board, cells, topColor, myColor };
+    const header = readHeader(img, board.top);
+    return { rows, cols, board, cells, topColor, myColor, header };
   }
 
-  const api = { readBoard, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
+  const api = { readBoard, readHeader, sigDistance, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LGReader = api;
 })(typeof self !== 'undefined' ? self : this);

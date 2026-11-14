@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=21');
+  const worker = new Worker('solver.worker.js?v=22');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -60,7 +60,7 @@
 
   // ---------------- templates ----------------
   async function loadTemplates() {
-    const list = await (await fetch('templates.json?v=1')).json();
+    const list = await (await fetch('templates.json?v=2')).json();
     const T = LGReader.decodeTemplates(list);
     // letters missing from the sample screenshots: render them with a similar bold sans font
     const have = new Set(T.map(t => t.l));
@@ -79,6 +79,26 @@
     return T;
   }
   const templatesP = loadTemplates().then(t => (templates = t)).catch(err => showMsg('Could not load letter templates: ' + err.message));
+
+  // ---------------- which player am I? ----------------
+  // The app learns the shape of the user's name in the header (from the side they pick) and finds it on
+  // either side of the header in later screenshots. Until it has learned, it assumes the left-hand player.
+  function learnMyName(header, color) {
+    if (!header) return;
+    const blk = header.left.color === color ? header.left : header.right.color === color ? header.right : null;
+    if (blk && blk.sig) { settings.mySig = blk.sig; saveSettings(); }
+  }
+  function whoAmI(r) {
+    const h = r.header;
+    if (h && settings.mySig && h.left.sig && h.right.sig) {
+      const dl = LGReader.sigDistance(settings.mySig, h.left.sig), dr = LGReader.sigDistance(settings.mySig, h.right.sig);
+      if (Math.min(dl, dr) < 0.45 && Math.abs(dl - dr) > 0.04) return { color: dl < dr ? h.left.color : h.right.color, byName: true };
+    }
+    const color = r.myColor;                        // fallback: the left-hand player
+    const learned = !settings.mySig && !!h;
+    if (learned) learnMyName(h, color);
+    return { color, byName: false, learned };
+  }
 
   // ---------------- image input ----------------
   $('#fileInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) readImageFile(f); e.target.value = ''; });
@@ -106,15 +126,18 @@
       const data = ctx.getImageData(0, 0, cv.width, cv.height);
       const r = LGReader.readBoard(data, templates);
       const n = r.rows * r.cols;
+      const who = whoAmI(r);
       grid = {
         rows: r.rows, cols: r.cols,
         letters: new Array(n), state: new Array(n), conf: new Array(n),
-        topColor: r.topColor, myColor: r.myColor,
-        myHome: r.myColor === r.topColor ? 'top' : 'bottom',
+        topColor: r.topColor, myColor: who.color, header: r.header,
+        myHome: who.color === r.topColor ? 'top' : 'bottom',
       };
       r.cells.flat().forEach((c, i) => { grid.letters[i] = c.letter; grid.state[i] = c.state; grid.conf[i] = c.conf; });
       const low = grid.conf.filter(c => c < 0.5).length;
+      const side = `You are <b>${who.color === 'O' ? 'orange' : 'blue'}</b> (${grid.myHome})${who.byName ? ', recognised by your name' : who.learned ? ' — the app has now learned your name; if this is wrong, tap the other side under “I play from” once' : ''}.`;
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
+      $('#readMsg').innerHTML += ' ' + side;
       wpNewUpload = true;
       afterGridLoaded();
       freshStart();
@@ -561,6 +584,7 @@
     const b = e.target.closest('button'); if (!b || !grid || b.dataset.v === grid.myHome) return;
     grid.myHome = b.dataset.v;
     grid.myColor = grid.myHome === 'top' ? grid.topColor : other(grid.topColor);
+    learnMyName(grid.header, grid.myColor);
     syncControls(); renderMainBoard();
     if (turnStage()) freshStart();
     else if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();   // keep the word list in step
