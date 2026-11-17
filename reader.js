@@ -82,12 +82,14 @@
   // The header bar has one coloured block per player (orange / blue) with the name on the top line.
   // For each block we return its colour and a small "shape signature" of the name's white text, so the
   // app can recognise the user's own name on either side of the header in later screenshots.
+  function isPurple(r, g, b) { return r > 55 && r < 130 && g < 40 && b > 100 && b < 190; }
   function readHeader(img, boardTop) {
     const { data, width: W } = img;
+    const barPx = (r, g, b) => isOrange(r, g, b) || isBlue(r, g, b) || isPurple(r, g, b) || (r > 225 && g > 95 && g < 125 && b < 30);
     const rowsY = [];
     for (let y = 0; y < boardTop; y++) {
       let n = 0;
-      for (let x = 0; x < W; x += 4) { const p = (y * W + x) * 4; if (isOrange(data[p], data[p + 1], data[p + 2]) || isBlue(data[p], data[p + 1], data[p + 2])) n++; }
+      for (let x = 0; x < W; x += 4) { const p = (y * W + x) * 4; if (barPx(data[p], data[p + 1], data[p + 2])) n++; }
       if (n / (W / 4) > 0.5) rowsY.push(y);
     }
     if (rowsY.length < 20) return null;
@@ -97,30 +99,24 @@
       if (rowsY[k] === cur[1] + 1) cur[1] = rowsY[k]; else cur = [rowsY[k], rowsY[k]];
       if (cur[1] - cur[0] > best[1] - best[0]) best = cur.slice();
     }
-    const [y0, y1] = best, ym = Math.round((y0 + y1) / 2);
-    // block extents along the middle line of the bar
-    const colorAt = x => { const p = (ym * W + x) * 4; return isOrange(data[p], data[p + 1], data[p + 2]) ? 'O' : isBlue(data[p], data[p + 1], data[p + 2]) ? 'B' : null; };
-    const blocks = [];
-    for (const c of ['O', 'B']) {
-      // longest unbroken run of this colour (ignores thin strips elsewhere in the bar); gaps of a few
-      // pixels (white letters crossing the middle line) don't break a run
-      let bestRun = null, start = -1, gap = 0;
-      for (let x = 0; x <= W; x++) {
-        const on = x < W && colorAt(x) === c;
-        if (on) { if (start < 0) start = x; gap = 0; }
-        else if (start >= 0 && ++gap > 40) {
-          const end = x - gap;
-          if (!bestRun || end - start > bestRun[1] - bestRun[0]) bestRun = [start, end];
-          start = -1; gap = 0;
-        }
+    const [y0, y1] = best;
+    // each player's colour: whichever of orange / blue dominates their half of the bar
+    // (layouts differ: solid name blocks, or a purple score bar with small coloured parts)
+    const colourOf = (xa, xb) => {
+      let o = 0, b = 0;
+      for (let y = y0; y <= y1; y += 2) for (let x = xa; x < xb; x += 2) {
+        const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2];
+        if (isOrange(r, g, bl) || (r > 225 && g > 95 && g < 125 && bl < 30)) o++; else if (isBlue(r, g, bl)) b++;
       }
-      if (bestRun) blocks.push({ color: c, x0: bestRun[0], x1: bestRun[1] });
-    }
-    if (blocks.length !== 2) return null;
-    blocks.sort((a, b) => a.x0 - b.x0);
-    const yTop = y0, yName = y0 + Math.round((y1 - y0) * 0.5);   // name sits on the upper half
-    for (const b of blocks) b.sig = nameSig(img, b.x0, yTop, b.x1, yName);
-    return { left: blocks[0], right: blocks[1] };
+      return o === b ? null : o > b ? 'O' : 'B';
+    };
+    const lc = colourOf(0, Math.round(W / 2)), rc = colourOf(Math.round(W / 2), W);
+    if (!lc || !rc || lc === rc) return null;
+    // names sit in the upper half, between the avatar (outer ~15%) and the middle (turn icon)
+    const yName = y0 + Math.round((y1 - y0) * 0.5);
+    const left = { color: lc, sig: nameSig(img, Math.round(W * 0.15), y0, Math.round(W * 0.46), yName) };
+    const right = { color: rc, sig: nameSig(img, Math.round(W * 0.54), y0, Math.round(W * 0.85), yName) };
+    return { left, right };
   }
   function nameSig(img, x0, y0, x1, y1) {
     const { data, width: W } = img;
@@ -141,15 +137,30 @@
     }
     return { a: +((bx1 - bx0 + 1) / (by1 - by0 + 1)).toFixed(3), g: g.join('') };
   }
-  // 0 = identical; larger = more different
+  // 0 = identical; larger = more different. Both shapes are lightly blurred first so the small shifts
+  // between header layouts (font size, alignment) matter less than the overall shape of the name.
+  function blurSig(sg) {
+    const GW = 48, GH = 12, v = Array.from(sg.g, ch => (ch.charCodeAt(0) - 48) / 9), o = new Float32Array(GW * GH);
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      let s = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const yy = y + dy, xx = x + dx;
+        if (yy >= 0 && yy < GH && xx >= 0 && xx < GW) { s += v[yy * GW + xx]; n++; }
+      }
+      o[y * GW + x] = s / n;
+    }
+    return o;
+  }
   function sigDistance(a, b) {
     if (!a || !b) return Infinity;
+    const A = blurSig(a), B = blurSig(b);
     let d = 0;
-    for (let i = 0; i < a.g.length; i++) { const e = (a.g.charCodeAt(i) - b.g.charCodeAt(i)) / 9; d += e * e; }
-    d /= a.g.length;
+    for (let i = 0; i < A.length; i++) { const e = A[i] - B[i]; d += e * e; }
+    d /= A.length;
     const ea = Math.log(a.a / b.a);
     return d + ea * ea;
   }
+
 
   // ---------- per-cell analysis ----------
   function analyseCell(img, x0, y0, x1, y1) {
@@ -276,17 +287,44 @@
     return ok(top) ? top : ok(bot) ? bot : 0;
   }
 
+  // number of columns = number of letters across a home row (boards come in different widths)
+  function countCols(img, b, band) {
+    if (!band) return 0;
+    const { data, width: W } = img;
+    const white = (x, y) => { const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2]; return Math.min(r, g, bl) > 200 && Math.max(r, g, bl) - Math.min(r, g, bl) < 45; };
+    const one = (yA, yB) => {
+      const segs = []; let start = -1, last = -1;
+      const gapMax = band * 0.18;
+      for (let x = b.left + 4; x < b.right - 4; x++) {
+        let on = false;
+        for (let y = yA; y < yB && !on; y += 2) on = white(x, y);
+        if (on) { if (start < 0) start = x; else if (x - last > gapMax) { segs.push([start, last]); start = x; } last = x; }
+      }
+      if (start >= 0) segs.push([start, last]);
+      const real = segs.filter(([a, z]) => z - a > band * 0.035);       // ignore specks (but keep a thin I)
+      if (real.length < 3) return { n: 0, spread: Infinity };
+      const centres = real.map(([a, z]) => (a + z) / 2), gaps = centres.slice(1).map((c, i) => c - centres[i]);
+      const mean = gaps.reduce((u, v) => u + v, 0) / gaps.length;
+      const spread = Math.sqrt(gaps.reduce((u, v) => u + (v - mean) * (v - mean), 0) / gaps.length) / mean;
+      return { n: real.length, spread };
+    };
+    const t = one(Math.round(b.top + band * 0.2), Math.round(b.top + band * 0.8));
+    const u = one(Math.round(b.bottom - band * 0.8), Math.round(b.bottom - band * 0.2));
+    const pick = [t, u].filter(x => x.n >= 3 && x.n <= 20 && x.spread < 0.25).sort((x, y) => y.n - x.n || x.spread - y.spread)[0];
+    return pick ? pick.n : 0;
+  }
+
   // ---------- main entry ----------
-  // opts.cols (default 10), opts.rows (auto when omitted)
+  // opts.cols / opts.rows (auto when omitted)
   function readBoard(img, templates, opts = {}) {
     const board = findBoard(img);
     if (!board) throw new Error('Could not find the game board in this image.');
-    const cols = opts.cols || 10;
     const bw = board.right - board.left + 1, bh = board.bottom - board.top + 1;
-    const cellW = bw / cols;
-    // The striped home rows are exactly one cell tall, so measure them rather than assuming the
-    // cell shape (it differs between phones and screen layouts).
+    // The home rows are exactly one cell tall, so measure them rather than assuming the cell shape
+    // (it differs between phones, screen layouts and board sizes).
     const band = homeBandHeight(img, board);
+    const cols = opts.cols || countCols(img, board, band) || (band ? Math.max(3, Math.round(bw / (band * 1.06))) : 10);
+    const cellW = bw / cols;
     const rows = opts.rows || Math.max(3, Math.round(bh / (band || cellW * 0.946)));
     const cellH = bh / rows;
     const cells = [];
@@ -311,8 +349,8 @@
     // home rows: which colour is on top
     const topO = cells[0].filter(c => c.state === 'O').length, topB = cells[0].filter(c => c.state === 'B').length;
     const topColor = topO >= topB ? 'O' : 'B';
-    const myColor = detectMyColor(img, board.top) || 'O';
     const header = readHeader(img, board.top);
+    const myColor = (header && header.left.color) || detectMyColor(img, board.top) || 'O';
     return { rows, cols, board, cells, topColor, myColor, header };
   }
 

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=22');
+  const worker = new Worker('solver.worker.js?v=23');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -60,7 +60,7 @@
 
   // ---------------- templates ----------------
   async function loadTemplates() {
-    const list = await (await fetch('templates.json?v=2')).json();
+    const list = await (await fetch('templates.json?v=3')).json();
     const T = LGReader.decodeTemplates(list);
     // letters missing from the sample screenshots: render them with a similar bold sans font
     const have = new Set(T.map(t => t.l));
@@ -83,21 +83,33 @@
   // ---------------- which player am I? ----------------
   // The app learns the shape of the user's name in the header (from the side they pick) and finds it on
   // either side of the header in later screenshots. Until it has learned, it assumes the left-hand player.
+  // remembered samples of the user's name (several layouts look slightly different)
+  function nameSamples() { return Array.isArray(settings.mySigs) ? settings.mySigs : []; }
+  function nameDist(sig) { return Math.min(Infinity, ...nameSamples().map(x => LGReader.sigDistance(x, sig))); }
   function learnMyName(header, color) {
     if (!header) return;
-    const blk = header.left.color === color ? header.left : header.right.color === color ? header.right : null;
-    if (blk && blk.sig) { settings.mySig = blk.sig; saveSettings(); }
+    const mineB = header.left.color === color ? header.left : header.right.color === color ? header.right : null;
+    const theirs = mineB === header.left ? header.right : header.left;
+    if (!mineB || !mineB.sig) return;
+    // drop any sample that looks like the other player's name (e.g. a wrong first guess), then add this one
+    let list = nameSamples().filter(x => !(theirs.sig && LGReader.sigDistance(x, theirs.sig) < 0.03));
+    if (!list.some(x => LGReader.sigDistance(x, mineB.sig) < 0.01)) list.push(mineB.sig);
+    settings.mySigs = list.slice(-8); delete settings.mySig; saveSettings();
   }
   function whoAmI(r) {
     const h = r.header;
-    if (h && settings.mySig && h.left.sig && h.right.sig) {
-      const dl = LGReader.sigDistance(settings.mySig, h.left.sig), dr = LGReader.sigDistance(settings.mySig, h.right.sig);
-      if (Math.min(dl, dr) < 0.45 && Math.abs(dl - dr) > 0.04) return { color: dl < dr ? h.left.color : h.right.color, byName: true };
+    if (h && nameSamples().length && h.left.sig && h.right.sig) {
+      const dl = nameDist(h.left.sig), dr = nameDist(h.right.sig), lo = Math.min(dl, dr), hi = Math.max(dl, dr);
+      if (lo < 0.3 && hi / Math.max(lo, 1e-6) > 1.03) {
+        const color = dl < dr ? h.left.color : h.right.color;
+        learnMyName(h, color);                      // keep learning this layout's version of the name
+        return { color, byName: true };
+      }
     }
-    const color = r.myColor;                        // fallback: the left-hand player
-    const learned = !settings.mySig && !!h;
+    const color = r.myColor;                        // not sure yet: assume the left-hand player
+    const learned = !nameSamples().length && !!h;
     if (learned) learnMyName(h, color);
-    return { color, byName: false, learned };
+    return { color, byName: false, learned, unsure: !!h && nameSamples().length > 0 };
   }
 
   // ---------------- image input ----------------
@@ -135,7 +147,7 @@
       };
       r.cells.flat().forEach((c, i) => { grid.letters[i] = c.letter; grid.state[i] = c.state; grid.conf[i] = c.conf; });
       const low = grid.conf.filter(c => c < 0.5).length;
-      const side = `You are <b>${who.color === 'O' ? 'orange' : 'blue'}</b> (${grid.myHome})${who.byName ? ', recognised by your name' : who.learned ? ' — the app has now learned your name; if this is wrong, tap the other side under “I play from” once' : ''}.`;
+      const side = `You are <b>${who.color === 'O' ? 'orange' : 'blue'}</b> (${grid.myHome})${who.byName ? ', recognised by your name' : who.learned ? ' — the app has now learned your name; if this is wrong, tap the other side under “I play from” once' : who.unsure ? ' — not sure from the name on this layout; if this is wrong, tap the other side under “I play from” and the app will learn it' : ''}.`;
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
       $('#readMsg').innerHTML += ' ' + side;
       wpNewUpload = true;
