@@ -201,3 +201,7 @@ main[hidden], [hidden] { display: none !important; }
 .wp-bar span { padding: 0; }
 .wp-labels { display: flex; justify-content: space-between; font-weight: 800; font-size: 17px; }
 .wp-l-me { color: var(--wp-me); } .wp-l-op { color: var(--wp-op); }
+.num-in { width: 80px; min-height: 40px; background: #151515; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; font-size: 16px; }
+#invView .controls { margin-top: 12px; }
+#invBoard { margin-top: 4px; }
+.tabs button { font-size: 14px; }

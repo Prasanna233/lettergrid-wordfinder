@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=23');
+  const worker = new Worker('solver.worker.js?v=24');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -29,11 +29,15 @@
       runPuzzle();
       if (grid) checkHeavy();
       if (pendingFresh && grid) runFresh();
+      if (invPending && grid) invRun();
     } else if (m.type === 'solved' && typeof m.id === 'string') {
       if (m.id === 'pz' + pzId) pzSolved(m);
       else if (m.id === 'hv' + hvId) renderHeavy(m);
       else if (m.id === 'wn' + wnId) { computeWin(m.results); paintBoard(); }
       else if (m.id === 'wpme' + wpId) { wpPart.me = m; renderWinPct(); }
+      else if (m.id === 'inv' + invId) invSolved(m);
+      else if (m.id === 'ivme' + ivId) { ivPart.me = m; invScore(); }
+      else if (m.id === 'ivop' + ivId) { ivPart.op = m; invScore(); }
       else if (m.id === 'wpop' + wpId) { wpPart.op = m; renderWinPct(); }
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
@@ -151,8 +155,13 @@
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
       $('#readMsg').innerHTML += ' ' + side;
       wpNewUpload = true;
+      grid.mode = r.cols < 10 ? 'invasion' : 'race';
       afterGridLoaded();
-      freshStart();
+      if (grid.mode === 'invasion') {
+        $('#freshNote').hidden = true;
+        if ($('#invView').hidden) showTab('invasion'); else invSync();
+        if (dictReady) invRun(); else invPending = true;
+      } else freshStart();
     } catch (err) {
       showMsg((err && err.message ? err.message : String(err)) + ' You can type the grid manually instead.');
       if (!$('#puzzleView').hidden) $('#pzBoardInfo').textContent = (err && err.message ? err.message : String(err)) + ' Try another screenshot, or type the board in the Grid solver tab.';
@@ -381,8 +390,9 @@
       ${h.length > 1 ? `<div class="wp-hist">${h.map((x, i) => `<span class="wp-chip${i === h.length - 1 ? ' cur' : ''}"><b>T${i + 1}</b> ${x.me}–${x.op}</span>`).join('')}<button type="button" class="linkbtn inline" id="wpReset">New game</button></div>` : ''}`;
     const rs = $('#wpReset'); if (rs) rs.addEventListener('click', () => { saveHistory([entry]); renderWinPct(); });
     // colours follow the players: mine is orange or blue depending on the board
-    box.style.setProperty('--wp-me', grid.myColor === 'O' ? 'var(--orange)' : 'var(--blue)');
-    box.style.setProperty('--wp-op', grid.myColor === 'O' ? 'var(--blue)' : 'var(--orange)');
+    // same scheme as the board: my tiles orange, the opponent's blue
+    box.style.setProperty('--wp-me', 'var(--orange)');
+    box.style.setProperty('--wp-op', 'var(--blue)');
   }
   function renderHeavy(m) {
     const mid = (grid.cols - 1) / 2;
@@ -589,15 +599,16 @@
     else if (b.textContent.startsWith('Loading')) b.textContent = 'Find words';
   }
   function syncSide() {
-    for (const id of ['#sideSeg', '#pzSideSeg']) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', !!grid && b.dataset.v === grid.myHome));
+    for (const id of ['#sideSeg', '#pzSideSeg', '#invSideSeg']) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', !!grid && b.dataset.v === grid.myHome));
   }
   // switching sides recomputes the winning letters (they depend on which base is the opponent's)
-  for (const id of ['#sideSeg', '#pzSideSeg']) $(id).addEventListener('click', e => {
+  for (const id of ['#sideSeg', '#pzSideSeg', '#invSideSeg']) $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !grid || b.dataset.v === grid.myHome) return;
     grid.myHome = b.dataset.v;
     grid.myColor = grid.myHome === 'top' ? grid.topColor : other(grid.topColor);
     learnMyName(grid.header, grid.myColor);
     syncControls(); renderMainBoard();
+    if (typeof invSync === 'function' && !$('#invView').hidden) { invSync(); if (!$('#invResultsCard').hidden) invRun(); return; }
     if (turnStage()) freshStart();
     else if (!$('#resultsCard').hidden && dictReady) $('#solveBtn').click();   // keep the word list in step
   });
@@ -705,12 +716,120 @@
     li.appendChild(det);
   });
 
+  // ---------------- Invasion ----------------
+  // Smaller boards are played for tiles: whoever holds the most (first to the target shown in the header,
+  // e.g. "6/20") wins. A word captures the tiles it passes through, including the opponent's.
+  let invId = 0, ivId = 0, ivPart = {}, invPending = false, invList = [], invShown = 0, invOpen = -1;
+  const invT = () => Math.max(5, +settings.invTarget || 20);
+  const tiles = c => grid ? grid.state.filter(s => s === c).length : 0;
+  (function invInit() {
+    for (const id of ['#invMin', '#invMax']) { const s = $(id); for (let k = 4; k <= 20; k++) s.insertAdjacentHTML('beforeend', `<option>${k}</option>`); }
+    $('#invFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) readImageFile(f); e.target.value = ''; });
+    $('#invStartSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.invStart = b.dataset.v; saveSettings(); invSync(); });
+    $('#invMin').addEventListener('change', e => { settings.invMin = +e.target.value; if ((settings.invMax || 20) < settings.invMin) settings.invMax = settings.invMin; saveSettings(); invSync(); });
+    $('#invMax').addEventListener('change', e => { settings.invMax = +e.target.value; if ((settings.invMin || 4) > settings.invMax) settings.invMin = settings.invMax; saveSettings(); invSync(); });
+    $('#invTarget').addEventListener('change', e => { settings.invTarget = Math.max(5, Math.min(200, +e.target.value || 20)); saveSettings(); invSync(); invScore(); renderInv(true); });
+    $('#invFind').addEventListener('click', () => invRun());
+    $('#invMore').addEventListener('click', () => renderInv(false));
+    $('#invResults').addEventListener('click', e => {
+      const li = e.target.closest('li[data-k]'); if (!li) return;
+      const k = +li.dataset.k, prev = $('#invResults .detail'); if (prev) prev.remove();
+      if (invOpen === k) { invOpen = -1; return; }
+      invOpen = k; const r = invList[k];
+      const det = document.createElement('div'); det.className = 'detail';
+      det.appendChild(miniBoard(r));
+      const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
+      det.insertAdjacentHTML('beforeend', `<div class="facts"><span>New tiles <b>+${r.gained}</b></span><span>Taken from opponent <b>${r.stolen}</b></span>
+        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b></span>${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+      li.appendChild(det);
+    });
+  })();
+  function invSync() {
+    $('#invTarget').value = invT();
+    $('#invStartSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (settings.invStart || 'mine')));
+    $('#invMin').value = settings.invMin || 4; $('#invMax').value = settings.invMax || 20;
+    $('#invFileLbl').textContent = grid ? 'Change screenshot' : 'Add screenshot';
+    $('#invBody').hidden = !grid;
+    if (!grid) return;
+    syncSide();
+    $('#invInfo').innerHTML = `Board ${grid.cols}×${grid.rows}. You are <b>${grid.myColor === 'O' ? 'orange' : 'blue'}</b>. <button type="button" class="linkbtn inline" id="invEdit">Fix letters in Grid solver</button>`;
+    $('#invEdit').addEventListener('click', () => showTab('grid'));
+    const v = $('#invBoard'); v.innerHTML = ''; v.appendChild(miniBoard({ path: [], wild: [], word: '' }));
+    invScore();
+  }
+  function invOpts(start) { return { minLen: settings.invMin || 4, maxLen: settings.invMax || 20, start, limit: 100000, wildFollowUp: false }; }
+  function invRun() {
+    invPending = false;
+    if (!grid || !dictReady) { invPending = !!grid; return; }
+    const base = { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state };
+    const oppColor = other(grid.myColor), oppHome = grid.myHome === 'top' ? 'bottom' : 'top';
+    $('#invFind').disabled = true; $('#invFind').textContent = 'Searching…';
+    worker.postMessage({ type: 'solve', id: 'inv' + (++invId), grid: { ...base, myColor: grid.myColor, myHome: grid.myHome }, opts: invOpts(settings.invStart || 'mine') });
+    // win chance: my best word now vs the opponent's best word next turn
+    ivId++; ivPart = { key: gridKey() };
+    worker.postMessage({ type: 'solve', id: 'ivme' + ivId, grid: { ...base, myColor: grid.myColor, myHome: grid.myHome }, opts: invOpts(settings.invStart || 'mine') });
+    worker.postMessage({ type: 'solve', id: 'ivop' + ivId, grid: { ...base, myColor: oppColor, myHome: oppHome }, opts: invOpts(settings.invStart || 'mine') });
+  }
+  function swingOf(r) { return r.gained + r.stolen; }
+  function invSolved(m) {
+    $('#invFind').disabled = false; $('#invFind').textContent = 'Find words';
+    const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
+    invList = m.results.map(r => ({ ...r, swing: swingOf(r), after: me + r.gained, oppAfter: op - r.stolen }));
+    invList.forEach(r => { r.wins = r.after >= T; });
+    invList.sort((a, b) => (b.wins - a.wins) || b.swing - a.swing || b.gained - a.gained || b.len - a.len || a.word.localeCompare(b.word));
+    $('#invResultsCard').hidden = false;
+    renderInv(true);
+  }
+  function renderInv(reset) {
+    if (reset) { invShown = 0; invOpen = -1; $('#invResults').innerHTML = ''; }
+    if (!invList.length && reset) { $('#invTitle').textContent = 'No words'; $('#invResults').innerHTML = '<li class="hint" style="padding:12px 0">No words with these settings. Try “Next to them” or a wider length.</li>'; $('#invMore').hidden = true; return; }
+    const T = invT(); invList.forEach(r => { r.wins = r.after >= T; });
+    $('#invTitle').textContent = `${invList.length.toLocaleString()} words`;
+    const end = Math.min(invList.length, invShown + 150), frag = document.createDocumentFragment();
+    for (let k = invShown; k < end; k++) {
+      const r = invList[k], li = document.createElement('li');
+      li.dataset.k = k; if (r.wins) li.className = 'win';
+      const w = r.word.split('').map((ch, i) => (r.wild.includes(i) ? `<span class="wl">${ch}</span>` : ch)).join('');
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.wins ? '<span class="win-b">🏁 WIN</span>' : ''}${r.stolen ? `<span title="taken from opponent">✂${r.stolen}</span>` : ''}<span class="len-b">${r.len}</span><span class="sc">+${r.swing}</span></span></div>`;
+      frag.appendChild(li);
+    }
+    $('#invResults').appendChild(frag); invShown = end;
+    $('#invMore').hidden = invShown >= invList.length;
+  }
+  function invScore() {
+    const box = $('#invScore'); if (!grid) return;
+    const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
+    let html = `<div class="wp-head"><span class="lbl">Tiles · first to ${T}</span></div>
+      <div class="wp-labels"><span class="wp-l-me">You ${me}/${T}</span><span class="wp-l-op">Opponent ${op}/${T}</span></div>`;
+    if (ivPart.me && ivPart.op && ivPart.key === gridKey()) {
+      const best = res => res.results.reduce((b, r) => (r.gained + r.stolen > b.gained + b.stolen ? r : b), { gained: 0, stolen: 0 });
+      const mb = best(ivPart.me), ob = best(ivPart.op);
+      const meAfter = me + mb.gained, opAfter = op - mb.stolen;
+      let p;
+      if (meAfter >= T) p = 95;                                  // a word on the board wins it now
+      else if (opAfter + ob.gained >= T) p = 15;                 // they could reach the target next turn
+      else {
+        const diff = (meAfter - opAfter) - (ob.gained + ob.stolen) * 0.8;   // their best reply eats into my lead
+        p = Math.max(5, Math.min(95, Math.round(100 / (1 + Math.exp(-diff / 3)))));
+      }
+      html += `<div class="wp-labels" style="font-size:14px"><span class="wp-l-me">Win chance ${p}%</span><span class="wp-l-op">${100 - p}%</span></div>
+        <div class="wp-bar"><span class="wp-me" style="width:${p}%"></span><span class="wp-op" style="width:${100 - p}%"></span></div>
+        <p class="wp-why">${meAfter >= T ? `You can reach <b>${T}</b> tiles with one word now.` : `Your best word now: <b>+${mb.gained}</b> tiles${mb.stolen ? `, ${mb.stolen} taken from them` : ''}. Their best next word: <b>+${ob.gained}</b>${ob.stolen ? `, ${ob.stolen} from you` : ''}.`} Estimate.</p>`;
+    }
+    box.innerHTML = html;
+    // same scheme as the board: my tiles orange, the opponent's blue
+    box.style.setProperty('--wp-me', 'var(--orange)');
+    box.style.setProperty('--wp-op', 'var(--blue)');
+  }
+
   // ---------------- tabs ----------------
   function showTab(t) {
     settings.tab = t; saveSettings();
     document.querySelectorAll('#tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'));
     $('#gridView').hidden = t !== 'grid';
     $('#puzzleView').hidden = t !== 'puzzle';
+    $('#invView').hidden = t !== 'invasion';
+    if (t === 'invasion' && typeof invSync === 'function') invSync();
     if (t === 'puzzle' && typeof syncPzBoard === 'function') { syncPzBoard(); runPuzzle(); }
     window.scrollTo(0, 0);
   }

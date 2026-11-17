@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
 <header class="top">
@@ -21,6 +21,7 @@
 <nav class="tabs" id="tabs" role="tablist">
   <button role="tab" data-tab="grid" aria-selected="true">Grid solver</button>
   <button role="tab" data-tab="puzzle" aria-selected="false">Puzzle solver</button>
+  <button role="tab" data-tab="invasion" aria-selected="false">Invasion</button>
 </nav>
 
 <main id="gridView">
@@ -116,6 +117,40 @@
   </section>
 </main>
 
+<main id="invView" hidden>
+  <section class="card" id="invCard">
+    <div class="card-head"><h2>Invasion</h2><span class="sub">Most tiles wins</span></div>
+    <div class="row-btns">
+      <label class="big-btn small" for="invFile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span id="invFileLbl">Add screenshot</span></label>
+    </div>
+    <input id="invFile" type="file" accept="image/*" hidden>
+    <p id="invInfo" class="hint">Add a screenshot of an Invasion game. Words capture the tiles they pass through; tiles taken from the opponent count for you and against them.</p>
+    <div id="invBody" hidden>
+      <div class="side-ctl"><span class="lbl">I play from</span>
+        <div class="seg" id="invSideSeg"><button type="button" data-v="top">⬆ Top</button><button type="button" data-v="bottom">⬇ Bottom</button></div></div>
+      <div id="invScore" class="win-pct"></div>
+      <div class="ctl start-ctl"><span class="lbl">Word starts</span>
+        <div class="seg" id="invStartSeg"><button type="button" data-v="mine">On my tiles</button><button type="button" data-v="adjacent">Next to them</button><button type="button" data-v="anywhere">Anywhere</button></div></div>
+      <div id="invBoard"></div>
+      <div class="controls">
+        <div class="ctl"><span class="lbl">Length</span>
+          <div class="len"><select id="invMin"></select><span>to</span><select id="invMax"></select><span>letters</span></div></div>
+        <div class="ctl"><span class="lbl">Tiles to win</span>
+          <div class="len"><input id="invTarget" type="number" min="5" max="200" inputmode="numeric" class="num-in"><span>tiles (the header shows it as “6/20”)</span></div></div>
+        <button id="invFind" class="primary">Find words</button>
+      </div>
+    </div>
+  </section>
+  <section class="card" id="invResultsCard" hidden>
+    <div class="card-head"><h2 id="invTitle">Words</h2></div>
+    <p class="score-help">Ranked by tile swing: tiles you gain plus tiles you take from the opponent (each of those counts twice). 🏁 = reaches the tiles needed to win.</p>
+    <ol id="invResults" class="results"></ol>
+    <button id="invMore" class="ghost" hidden>Show more</button>
+  </section>
+</main>
+
 <main id="puzzleView" hidden>
   <section class="card">
     <div class="card-head"><h2>Puzzle solver</h2></div>
@@ -172,9 +207,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 23 · Nov 18</p>
+<p class="app-ver">Version 24 · Nov 18</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="reader.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
