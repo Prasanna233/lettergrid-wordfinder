@@ -14,6 +14,10 @@
   function isOrange(r, g, b) { return r > 190 && g > 60 && g < 170 && b < 90 && r - g > 70; }
   function isBlue(r, g, b) { return b > 200 && r < 120 && g > 110 && g < 190 && b - r > 120; }
   function isDark(r, g, b) { return Math.max(r, g, b) < 60; }
+  // cell backgrounds vary with the game's theme (e.g. a tinted board fading brown -> blue), so cell
+  // classification uses wider ranges than the border detection does
+  function isTileLight(r, g, b) { const mn = Math.min(r, g, b), mx = Math.max(r, g, b); return mn > 160 && mx - mn < 50; }
+  function isCellDark(r, g, b) { return Math.max(r, g, b) < 85; }
 
   // ---------- board location ----------
   function findBoard(img) {
@@ -90,13 +94,13 @@
     for (let y = 0; y < boardTop; y++) {
       let n = 0;
       for (let x = 0; x < W; x += 4) { const p = (y * W + x) * 4; if (barPx(data[p], data[p + 1], data[p + 2])) n++; }
-      if (n / (W / 4) > 0.5) rowsY.push(y);
+      if (n / (W / 4) > 0.4) rowsY.push(y);
     }
     if (rowsY.length < 20) return null;
-    // the longest run of such rows is the bar
+    // the longest run of such rows is the bar (short gaps — rows crossing the names and avatars — are bridged)
     let best = [rowsY[0], rowsY[0]], cur = [rowsY[0], rowsY[0]];
     for (let k = 1; k < rowsY.length; k++) {
-      if (rowsY[k] === cur[1] + 1) cur[1] = rowsY[k]; else cur = [rowsY[k], rowsY[k]];
+      if (rowsY[k] - cur[1] <= 12) cur[1] = rowsY[k]; else cur = [rowsY[k], rowsY[k]];
       if (cur[1] - cur[0] > best[1] - best[0]) best = cur.slice();
     }
     const [y0, y1] = best;
@@ -116,7 +120,7 @@
     const yName = y0 + Math.round((y1 - y0) * 0.5);
     const left = { color: lc, sig: nameSig(img, Math.round(W * 0.15), y0, Math.round(W * 0.46), yName) };
     const right = { color: rc, sig: nameSig(img, Math.round(W * 0.54), y0, Math.round(W * 0.85), yName) };
-    return { left, right };
+    return { left, right, y0, y1 };
   }
   function nameSig(img, x0, y0, x1, y1) {
     const { data, width: W } = img;
@@ -127,38 +131,43 @@
     let bx0 = x1, bx1 = x0, by0 = y1, by1 = y0;
     for (let y = y0; y < y1; y++) { if (lineRow(y)) continue; for (let x = x0; x < x1; x++) if (ink(x, y)) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; } }
     if (bx1 <= bx0 || by1 <= by0) return null;
-    const GW = 48, GH = 12, g = [];
+    // keep the name's real proportions: scale to a fixed height, width follows (letters keep their widths)
+    const GH = 16, bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, GW = Math.max(8, Math.min(160, Math.round(GH * bw / bh))), g = [];
     for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
-      const sx0 = bx0 + Math.floor(gx * (bx1 - bx0 + 1) / GW), sx1 = bx0 + Math.floor((gx + 1) * (bx1 - bx0 + 1) / GW);
-      const sy0 = by0 + Math.floor(gy * (by1 - by0 + 1) / GH), sy1 = by0 + Math.floor((gy + 1) * (by1 - by0 + 1) / GH);
-      let s = 0, n = 0;
-      for (let y = sy0; y < Math.max(sy1, sy0 + 1); y++) for (let x = sx0; x < Math.max(sx1, sx0 + 1); x++) { s += ink(x, y); n++; }
-      g.push(Math.round(9 * s / n));
+      const sx0 = bx0 + Math.floor(gx * bw / GW), sx1 = bx0 + Math.floor((gx + 1) * bw / GW);
+      const sy0 = by0 + Math.floor(gy * bh / GH), sy1 = by0 + Math.floor((gy + 1) * bh / GH);
+      let t = 0, n = 0;
+      for (let y = sy0; y < Math.max(sy1, sy0 + 1); y++) for (let x = sx0; x < Math.max(sx1, sx0 + 1); x++) { t += ink(x, y); n++; }
+      g.push(Math.round(9 * t / n));
     }
-    return { a: +((bx1 - bx0 + 1) / (by1 - by0 + 1)).toFixed(3), g: g.join('') };
+    return { v: 2, w: GW, h: GH, a: +(bw / bh).toFixed(3), g: g.join('') };
   }
-  // 0 = identical; larger = more different. Both shapes are lightly blurred first so the small shifts
-  // between header layouts (font size, alignment) matter less than the overall shape of the name.
-  function blurSig(sg) {
-    const GW = 48, GH = 12, v = Array.from(sg.g, ch => (ch.charCodeAt(0) - 48) / 9), o = new Float32Array(GW * GH);
-    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-      let s = 0, n = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) {
-        const yy = y + dy, xx = x + dx;
-        if (yy >= 0 && yy < GH && xx >= 0 && xx < GW) { s += v[yy * GW + xx]; n++; }
-      }
-      o[y * GW + x] = s / n;
+  // 0 = identical; larger = more different. The two name shapes are slid against each other a few
+  // columns either way (layouts align names differently) and compared over their combined width, so
+  // a different name — even one of similar length — leaves unmatched ink and scores badly.
+  function sigGrid(sg) {
+    const v = new Float32Array(sg.w * sg.h);
+    for (let y = 0; y < sg.h; y++) for (let x = 0; x < sg.w; x++) {
+      let t = 0, n = 0;
+      for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx >= 0 && xx < sg.w) { t += (sg.g.charCodeAt(y * sg.w + xx) - 48) / 9; n++; } }
+      v[y * sg.w + x] = t / n;
     }
-    return o;
+    return v;
   }
   function sigDistance(a, b) {
-    if (!a || !b) return Infinity;
-    const A = blurSig(a), B = blurSig(b);
-    let d = 0;
-    for (let i = 0; i < A.length; i++) { const e = A[i] - B[i]; d += e * e; }
-    d /= A.length;
-    const ea = Math.log(a.a / b.a);
-    return d + ea * ea;
+    if (!a || !b || a.v !== 2 || b.v !== 2 || a.h !== b.h) return Infinity;   // older stored samples are ignored
+    const A = sigGrid(a), B = sigGrid(b), H = a.h;
+    let best = Infinity;
+    for (let sh = -4; sh <= 4; sh++) {
+      const x0 = Math.min(0, sh), x1 = Math.max(a.w, b.w + sh);
+      let d = 0;
+      for (let x = x0; x < x1; x++) for (let y = 0; y < H; y++) {
+        const va = x >= 0 && x < a.w ? A[y * a.w + x] : 0, xb = x - sh, vb = xb >= 0 && xb < b.w ? B[y * b.w + xb] : 0;
+        d += (va - vb) * (va - vb);
+      }
+      best = Math.min(best, d / ((x1 - x0) * H));
+    }
+    return best;
   }
 
 
@@ -180,10 +189,11 @@
     let nO = 0, nB = 0, nW = 0, nD = 0;
     for (const [r, g, b] of ring) {
       if (isOrange(r, g, b)) nO++; else if (isBlue(r, g, b)) nB++;
-      else if (isLight(r, g, b)) nW++; else if (isDark(r, g, b)) nD++;
+      else if (isTileLight(r, g, b)) nW++; else if (isCellDark(r, g, b)) nD++;
     }
     const counts = { O: nO, B: nB, W: nW, '.': nD };
-    const state = Object.keys(counts).reduce((a, k) => (counts[k] > counts[a] ? k : a), 'O');
+    // when nothing matches, the cell is free (never assume it is a captured cell)
+    const state = Object.keys(counts).reduce((a, k) => (counts[k] > counts[a] ? k : a), '.');
 
     // background reference colours = frequent ring colours
     const hist = new Map();

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=24');
+  const worker = new Worker('solver.worker.js?v=25');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -88,7 +88,7 @@
   // The app learns the shape of the user's name in the header (from the side they pick) and finds it on
   // either side of the header in later screenshots. Until it has learned, it assumes the left-hand player.
   // remembered samples of the user's name (several layouts look slightly different)
-  function nameSamples() { return Array.isArray(settings.mySigs) ? settings.mySigs : []; }
+  function nameSamples() { return Array.isArray(settings.mySigs) ? settings.mySigs.filter(x => x && x.v === 2) : []; }   // older-format samples are dropped
   function nameDist(sig) { return Math.min(Infinity, ...nameSamples().map(x => LGReader.sigDistance(x, sig))); }
   function learnMyName(header, color) {
     if (!header) return;
@@ -104,14 +104,14 @@
     const h = r.header;
     if (h && nameSamples().length && h.left.sig && h.right.sig) {
       const dl = nameDist(h.left.sig), dr = nameDist(h.right.sig), lo = Math.min(dl, dr), hi = Math.max(dl, dr);
-      if (lo < 0.3 && hi / Math.max(lo, 1e-6) > 1.03) {
+      if (lo < 0.08 && hi / Math.max(lo, 1e-6) > 2) {
         const color = dl < dr ? h.left.color : h.right.color;
         learnMyName(h, color);                      // keep learning this layout's version of the name
         return { color, byName: true };
       }
     }
     const color = r.myColor;                        // not sure yet: assume the left-hand player
-    const learned = !nameSamples().length && !!h;
+    const learned = !nameSamples().length && !!h && !!(h.left.sig && h.right.sig);
     if (learned) learnMyName(h, color);
     return { color, byName: false, learned, unsure: !!h && nameSamples().length > 0 };
   }
