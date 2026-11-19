@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=26');
+  const worker = new Worker('solver.worker.js?v=27');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -739,7 +739,7 @@
       const det = document.createElement('div'); det.className = 'detail';
       det.appendChild(miniBoard(r));
       const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
-      det.insertAdjacentHTML('beforeend', `<div class="facts"><span>New cells <b>+${r.free}</b> for you</span>${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (−${r.stolen} for them)</span>` : ''}
+      det.insertAdjacentHTML('beforeend', `<div class="facts"><span>New cells <b>+${r.free}</b> for you</span>${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
         <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b></span>${wilds ? `<span>${wilds}</span>` : ''}</div>`);
       li.appendChild(det);
     });
@@ -770,14 +770,16 @@
     worker.postMessage({ type: 'solve', id: 'ivme' + ivId, grid: { ...base, myColor: grid.myColor, myHome: grid.myHome }, opts: invOpts(settings.invStart || 'mine') });
     worker.postMessage({ type: 'solve', id: 'ivop' + ivId, grid: { ...base, myColor: oppColor, myHome: oppHome }, opts: invOpts(settings.invStart || 'mine') });
   }
-  // Invasion points: each new (free) cell captured is +1 for me; each opponent letter my word cuts
-  // through is -1 for them. Reaching the opponent's base means nothing here.
-  function freeOf(r) { return r.gained - r.stolen; }
-  function swingOf(r) { return freeOf(r) + r.stolen; }
+  // Invasion points (checked against the game's own header counts): every cell my word captures is +1
+  // for me — free cells and opponent letters alike — and each opponent letter it cuts is also -1 for them.
+  // Reaching the opponent's base means nothing here.
+  function freeOf(r) { return r.gained - r.stolen; }           // new free cells only
+  function gainOf(r) { return r.gained; }                      // all cells I end up with (free + cut)
+  function swingOf(r) { return r.gained + r.stolen; }          // change in (my cells - their cells)
   function invSolved(m) {
     $('#invFind').disabled = false; $('#invFind').textContent = 'Find words';
     const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
-    invList = m.results.map(r => ({ ...r, reaches: false, free: freeOf(r), swing: swingOf(r), after: me + freeOf(r), oppAfter: op - r.stolen }));
+    invList = m.results.map(r => ({ ...r, reaches: false, free: freeOf(r), swing: swingOf(r), after: me + gainOf(r), oppAfter: op - r.stolen }));
     invList.forEach(r => { r.wins = r.after >= T; });
     invList.sort((a, b) => (b.wins - a.wins) || b.swing - a.swing || b.gained - a.gained || b.len - a.len || a.word.localeCompare(b.word));
     $('#invResultsCard').hidden = false;
@@ -808,17 +810,17 @@
       // best = most points this turn: new cells for me + letters cut from them
       const best = res => res.results.reduce((b, r) => (swingOf(r) > swingOf(b) ? r : b), { gained: 0, stolen: 0 });
       const mb = best(ivPart.me), ob = best(ivPart.op);
-      const meAfter = me + freeOf(mb), opAfter = op - mb.stolen;
+      const meAfter = me + gainOf(mb), opAfter = op - mb.stolen;
       let p;
       if (meAfter >= T) p = 95;                                  // a word on the board gets me to the target now
-      else if (opAfter + freeOf(ob) >= T) p = 15;                // they could reach the target next turn
+      else if (opAfter + gainOf(ob) >= T) p = 15;                // they could reach the target next turn
       else {
         const diff = (meAfter - opAfter) - swingOf(ob) * 0.8;   // their best reply eats into my lead
         p = Math.max(5, Math.min(95, Math.round(100 / (1 + Math.exp(-diff / 3)))));
       }
       html += `<div class="wp-labels" style="font-size:14px"><span class="wp-l-me">Win chance ${p}%</span><span class="wp-l-op">${100 - p}%</span></div>
         <div class="wp-bar"><span class="wp-me" style="width:${p}%"></span><span class="wp-op" style="width:${100 - p}%"></span></div>
-        <p class="wp-why">${meAfter >= T ? `You can reach <b>${T}</b> cells with one word now.` : `Your best word now: <b>+${freeOf(mb)}</b> new cell${freeOf(mb) === 1 ? '' : 's'}${mb.stolen ? `, −${mb.stolen} for them` : ''}. Their best next word: <b>+${freeOf(ob)}</b>${ob.stolen ? `, −${ob.stolen} for you` : ''}.`} Estimate.</p>`;
+        <p class="wp-why">${meAfter >= T ? `You can reach <b>${T}</b> cells with one word now.` : `Your best word now: <b>+${gainOf(mb)}</b> cell${gainOf(mb) === 1 ? '' : 's'} for you${mb.stolen ? ` (${mb.stolen} cut from them: −${mb.stolen} for them)` : ''}. Their best next word: <b>+${gainOf(ob)}</b>${ob.stolen ? `, −${ob.stolen} for you` : ''}.`} Estimate.</p>`;
     }
     box.innerHTML = html;
     // same scheme as the board: my tiles orange, the opponent's blue

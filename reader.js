@@ -18,6 +18,16 @@
   // classification uses wider ranges than the border detection does
   function isTileLight(r, g, b) { const mn = Math.min(r, g, b), mx = Math.max(r, g, b); return mn > 160 && mx - mn < 50; }
   function isCellDark(r, g, b) { return Math.max(r, g, b) < 85; }
+  // captured cells: judge by hue, so darker or lighter shades in tinted themes still count
+  function hsv(r, g, b) {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) h = mx === r ? 60 * (((g - b) / d) % 6) : mx === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+    if (h < 0) h += 360;
+    return [h, mx ? d / mx : 0, mx / 255];
+  }
+  function isOrangeCell(r, g, b) { if (isOrange(r, g, b)) return true; const [h, s, v] = hsv(r, g, b); return h >= 12 && h <= 40 && s > 0.5 && v > 0.5; }
+  function isBlueCell(r, g, b) { if (isBlue(r, g, b)) return true; const [h, s, v] = hsv(r, g, b); return h >= 195 && h <= 230 && s > 0.35 && v > 0.55; }
 
   // ---------- board location ----------
   function findBoard(img) {
@@ -188,7 +198,7 @@
     }
     let nO = 0, nB = 0, nW = 0, nD = 0;
     for (const [r, g, b] of ring) {
-      if (isOrange(r, g, b)) nO++; else if (isBlue(r, g, b)) nB++;
+      if (isOrangeCell(r, g, b)) nO++; else if (isBlueCell(r, g, b)) nB++;
       else if (isTileLight(r, g, b)) nW++; else if (isCellDark(r, g, b)) nD++;
     }
     const counts = { O: nO, B: nB, W: nW, '.': nD };

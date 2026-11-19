@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 <header class="top">
@@ -145,7 +145,7 @@
   </section>
   <section class="card" id="invResultsCard" hidden>
     <div class="card-head"><h2 id="invTitle">Words</h2></div>
-    <p class="score-help">Points: <b>+1</b> for each new cell you capture, <b>−1 for the opponent</b> for each of their letters your word cuts (✂). The first to 20 cells wins — reaching the opponent's base doesn't. Words are ranked by points swing (+N); 🏁 WIN = this word takes you to 20.</p>
+    <p class="score-help">Points: <b>+1</b> for every cell your word captures. Cutting one of the opponent's letters (✂) also takes it from them: <b>+1 for you, −1 for them</b>. The first to 20 cells wins — reaching the opponent's base doesn't. Words are ranked by swing (+N = your gain plus their loss); 🏁 WIN = this word takes you to 20.</p>
     <ol id="invResults" class="results"></ol>
     <button id="invMore" class="ghost" hidden>Show more</button>
   </section>
@@ -207,9 +207,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 26 · Nov 20</p>
+<p class="app-ver">Version 27 · Nov 20</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=26"></script>
-<script src="app.js?v=26"></script>
+<script src="reader.js?v=27"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
