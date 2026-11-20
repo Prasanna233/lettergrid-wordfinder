@@ -125,6 +125,7 @@ function solve(grid, opts) {
   }
 
   const minLen = opts.minLen || 4, maxLen = Math.min(opts.maxLen || 20, 20);
+  const banned = Array.isArray(opts.exclude) && opts.exclude.length ? opts.exclude.map(w => String(w).toUpperCase()) : null;
   const best = new Map(); // word -> result
   const used = new Uint8Array(n);
   const path = [], wordChars = [], wild = [];
@@ -160,6 +161,7 @@ function solve(grid, opts) {
 
   function record(node) {
     const word = wordChars.join('');
+    if (banned && banned.some(p => p.includes(word))) return;
     const sc = score();
     const prev = best.get(word);
     if (!prev || sc.score > prev.score) {
@@ -287,12 +289,13 @@ function replies(grid, moves, opts) {
   const nb = i => { const r = Math.floor(i / cols), c = i % cols, o = [];
     for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) o.push(rr * cols + cc); }
     return o; };
-  return moves.map(path => {
-    const st = grid.state.slice();
+  return moves.map(mv => {
+    const path = mv.path || mv, st = grid.state.slice();
     for (const i of path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
-    const r = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, limit: 100000, wildFollowUp: false });
+    const exclude = (opts.exclude || []).concat(mv.word ? [mv.word] : []);
+    const r = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false });
     let best = 0, word = '';
-    for (const x of r.results) if (x.gained > best) { best = x.gained; word = x.word; }
+    for (const x of r.results) if (x.stolen > best) { best = x.stolen; word = x.word; }   // points = my letters they cut
     return { best, word };
   });
 }

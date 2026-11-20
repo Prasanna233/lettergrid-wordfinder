@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=31');
+  const worker = new Worker('solver.worker.js?v=32');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -171,6 +171,8 @@
       afterGridLoaded();
       if (grid.mode === 'invasion') {
         $('#freshNote').hidden = true;
+        // a new game (only the home rows taken) starts with no played words
+        if (grid.state.every((st, i) => (st !== 'O' && st !== 'B') || Math.floor(i / grid.cols) === 0 || Math.floor(i / grid.cols) === grid.rows - 1)) { settings.invPlayed = ''; saveSettings(); }
         if ($('#invView').hidden) showTab('invasion'); else invSync();
         if (dictReady) invRun(); else invPending = true;
       } else freshStart();
@@ -751,6 +753,8 @@
     $('#invMax').addEventListener('change', e => { settings.invMax = +e.target.value; if ((settings.invMin || 4) > settings.invMax) settings.invMin = settings.invMax; saveSettings(); invSync(); });
     $('#invTarget').addEventListener('change', e => { settings.invTarget = Math.max(5, Math.min(200, +e.target.value || 20)); saveSettings(); invSync(); invScore(); renderInv(true); });
     $('#invFind').addEventListener('click', () => invRun());
+    let pwTimer = 0;
+    $('#invPlayed').addEventListener('input', e => { settings.invPlayed = e.target.value; saveSettings(); clearTimeout(pwTimer); pwTimer = setTimeout(() => { if (grid && !$('#invResultsCard').hidden) invRun(); }, 500); });
     $('#invMore').addEventListener('click', () => renderInv(false));
     $('#invResults').addEventListener('click', e => {
       const li = e.target.closest('li[data-k]'); if (!li) return;
@@ -760,13 +764,14 @@
       const det = document.createElement('div'); det.className = 'detail';
       det.appendChild(miniBoard(r));
       const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
-      det.insertAdjacentHTML('beforeend', `<div class="facts"><span>New cells <b>+${r.free}</b> for you</span>${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
+      det.insertAdjacentHTML('beforeend', `<div class="facts">${r.free ? `<span>Free cells taken: ${r.free} (0 points)</span>` : ''}${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
         <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? `<span>Their best reply: <b>${r.oppReplyWord || '—'}</b> +${r.oppReply}${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
       li.appendChild(det);
     });
   })();
   function invSync() {
     $('#invTarget').value = invT();
+    if ($('#invPlayed') !== document.activeElement) $('#invPlayed').value = settings.invPlayed || '';
     $('#invStartSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (settings.invStart || 'mine')));
     $('#invMin').value = settings.invMin || 4; $('#invMax').value = settings.invMax || 20;
     $('#invFileLbl').textContent = grid ? 'Change screenshot' : 'Add screenshot';
@@ -778,7 +783,8 @@
     const v = $('#invBoard'); v.innerHTML = ''; v.appendChild(miniBoard({ path: [], wild: [], word: '' }));
     invScore();
   }
-  function invOpts(start) { return { minLen: settings.invMin || 4, maxLen: settings.invMax || 20, start, limit: 100000, wildFollowUp: false }; }
+  function playedWords() { return (settings.invPlayed || '').toUpperCase().split(/[^A-Z]+/).filter(w => w.length >= 2); }
+  function invOpts(start) { return { minLen: settings.invMin || 4, maxLen: settings.invMax || 20, start, limit: 100000, wildFollowUp: false, exclude: playedWords() }; }
   function invRun() {
     invPending = false;
     if (!grid || !dictReady) { invPending = !!grid; return; }
@@ -794,13 +800,14 @@
   // Invasion points (checked against the game's own header counts): every cell my word captures is +1
   // for me — free cells and opponent letters alike — and each opponent letter it cuts is also -1 for them.
   // Reaching the opponent's base means nothing here.
-  function freeOf(r) { return r.gained - r.stolen; }           // new free cells only
-  function gainOf(r) { return r.gained; }                      // all cells I end up with (free + cut)
-  function swingOf(r) { return r.gained + r.stolen; }          // change in (my cells - their cells)
+  // Points: capturing a free (empty) cell scores nothing; each opponent letter cut is +1 me, -1 them.
+  function freeOf(r) { return r.gained - r.stolen; }           // free cells captured (0 points)
+  function gainOf(r) { return r.stolen; }                      // points I gain
+  function swingOf(r) { return 2 * r.stolen; }                 // change in (my points - their points)
   // the opponent's biggest single-word gain on the current board (from the win-chance search)
   function oppBestGain() {
     if (!ivPart.op || ivPart.key !== gridKey()) return -1;   // not known yet: no warning
-    return ivPart.op.results.reduce((m, r) => Math.max(m, r.gained), 0);
+    return ivPart.op.results.reduce((m, r) => Math.max(m, r.stolen), 0);
   }
   function invSolved(m) {
     $('#invFind').disabled = false; $('#invFind').textContent = 'Find words';
@@ -814,7 +821,7 @@
     if (rpList.length) worker.postMessage({
       type: 'replies', id: 'rp' + (++rpId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      moves: rpList.map(r => r.path), opts: invOpts(settings.invStart || 'mine'),
+      moves: rpList.map(r => ({ path: r.path, word: r.word })), opts: invOpts(settings.invStart || 'mine'),
     });
   }
   let rpId = 0, rpList = [];
@@ -844,7 +851,7 @@
   function invScore() {
     const box = $('#invScore'); if (!grid) return;
     const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
-    let html = `<div class="wp-head"><span class="lbl">Cells · first to ${T} wins</span></div>
+    let html = `<div class="wp-head"><span class="lbl">Points · first to ${T} wins</span></div>
       <div class="wp-labels"><span class="wp-l-me">You ${me}/${T}</span><span class="wp-l-op">Opponent ${op}/${T}</span></div>`;
     if (ivPart.me && ivPart.op && ivPart.key === gridKey()) {
       // best = most points this turn: new cells for me + letters cut from them
@@ -860,7 +867,7 @@
       }
       html += `<div class="wp-labels" style="font-size:14px"><span class="wp-l-me">Win chance ${p}%</span><span class="wp-l-op">${100 - p}%</span></div>
         <div class="wp-bar"><span class="wp-me" style="width:${p}%"></span><span class="wp-op" style="width:${100 - p}%"></span></div>
-        <p class="wp-why">${meAfter >= T ? `You can reach <b>${T}</b> cells with one word now.` : `Your best word now: <b>+${gainOf(mb)}</b> cell${gainOf(mb) === 1 ? '' : 's'} for you${mb.stolen ? ` (${mb.stolen} cut from them: −${mb.stolen} for them)` : ''}. Their best next word: <b>+${gainOf(ob)}</b>${ob.stolen ? `, −${ob.stolen} for you` : ''}.`} Estimate.</p>`;
+        <p class="wp-why">${meAfter >= T ? `You can reach <b>${T}</b> cells with one word now.` : `Your best word now cuts <b>${mb.stolen}</b> of their letters (+${mb.stolen} for you, −${mb.stolen} for them). Their best next word cuts <b>${ob.stolen}</b> of yours.`} Estimate.</p>`;
     }
     box.innerHTML = html;
     // same scheme as the board: my tiles orange, the opponent's blue
@@ -1002,6 +1009,7 @@
   }
   syncSrc();
   if (settings.tab === 'puzzle') showTab('puzzle');
+  if (settings.tab === 'invasion') showTab('invasion');
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
