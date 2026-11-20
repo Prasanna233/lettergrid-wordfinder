@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=28');
+  const worker = new Worker('solver.worker.js?v=29');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -143,7 +143,16 @@
       const data = ctx.getImageData(0, 0, cv.width, cv.height);
       const r = LGReader.readBoard(data, templates);
       const n = r.rows * r.cols;
-      const who = whoAmI(r);
+      let who = whoAmI(r);
+      // Invasion rule: the player with fewer cells captured is me (ties fall back to name recognition)
+      if (r.cols < 10) {
+        const flat = r.cells.flat(), nO = flat.filter(c => c.state === 'O').length, nB = flat.filter(c => c.state === 'B').length;
+        if (nO !== nB) {
+          const color = nO < nB ? 'O' : 'B';
+          if (color !== who.color || !who.byName) learnMyName(r.header, color);   // keep the name samples in step
+          who = { color, byFewer: true, counts: { O: nO, B: nB } };
+        }
+      }
       grid = {
         rows: r.rows, cols: r.cols,
         letters: new Array(n), state: new Array(n), conf: new Array(n),
@@ -152,7 +161,7 @@
       };
       r.cells.flat().forEach((c, i) => { grid.letters[i] = c.letter; grid.state[i] = c.state; grid.conf[i] = c.conf; });
       const low = grid.conf.filter(c => c < 0.5).length;
-      const side = `You are <b>${who.color === 'O' ? 'orange' : 'blue'}</b> (${grid.myHome})${who.byName ? ', recognised by your name' : who.learned ? ' — the app has now learned your name; if this is wrong, tap the other side under “I play from” once' : who.unsure ? ' — not sure from the name on this layout; if this is wrong, tap the other side under “I play from” and the app will learn it' : ''}.`;
+      const side = `You are <b>${who.color === 'O' ? 'orange' : 'blue'}</b> (${grid.myHome})${who.byFewer ? ` — Invasion rule: you have fewer cells (${who.counts[who.color]} vs ${who.counts[other(who.color)]})` : who.byName ? ', recognised by your name' : who.learned ? ' — the app has now learned your name; if this is wrong, tap the other side under “I play from” once' : who.unsure ? ' — not sure from the name on this layout; if this is wrong, tap the other side under “I play from” and the app will learn it' : ''}.`;
       showMsg(low ? `Read ${r.cols}×${r.rows} board. ${low} cell${low > 1 ? 's' : ''} marked with a dashed outline — please check.` : `Read ${r.cols}×${r.rows} board. Check it matches, then tap Find words.`);
       $('#readMsg').innerHTML += ' ' + side;
       wpNewUpload = true;
@@ -762,7 +771,7 @@
     $('#invBody').hidden = !grid;
     if (!grid) return;
     syncSide();
-    $('#invInfo').innerHTML = `Board ${grid.cols}×${grid.rows}. You are <b>${grid.myColor === 'O' ? 'orange' : 'blue'}</b>. <button type="button" class="linkbtn inline" id="invEdit">Fix letters in Grid solver</button>`;
+    $('#invInfo').innerHTML = `Board ${grid.cols}×${grid.rows}. You are <b>${grid.myColor === 'O' ? 'orange' : 'blue'}</b> (${tiles(grid.myColor)} cells)${tiles(grid.myColor) < tiles(other(grid.myColor)) ? ' — the player with fewer cells' : ''}. <button type="button" class="linkbtn inline" id="invEdit">Fix letters in Grid solver</button>`;
     $('#invEdit').addEventListener('click', () => showTab('grid'));
     const v = $('#invBoard'); v.innerHTML = ''; v.appendChild(miniBoard({ path: [], wild: [], word: '' }));
     invScore();
