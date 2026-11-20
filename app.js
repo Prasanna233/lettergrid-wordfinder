@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=32');
+  const worker = new Worker('solver.worker.js?v=33');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -175,7 +175,10 @@
         if (grid.state.every((st, i) => (st !== 'O' && st !== 'B') || Math.floor(i / grid.cols) === 0 || Math.floor(i / grid.cols) === grid.rows - 1)) { settings.invPlayed = ''; saveSettings(); }
         if ($('#invView').hidden) showTab('invasion'); else invSync();
         if (dictReady) invRun(); else invPending = true;
-      } else freshStart();
+      } else {
+        if (!$('#invView').hidden) showTab('grid');          // a race board belongs on the Grid solver
+        freshStart();
+      }
     } catch (err) {
       showMsg((err && err.message ? err.message : String(err)) + ' You can type the grid manually instead.');
       if (!$('#puzzleView').hidden) $('#pzBoardInfo').textContent = (err && err.message ? err.message : String(err)) + ' Try another screenshot, or type the board in the Grid solver tab.';

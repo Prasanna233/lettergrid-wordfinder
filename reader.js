@@ -124,7 +124,10 @@
       }
       return o === b ? null : o > b ? 'O' : 'B';
     };
-    const lc = colourOf(0, Math.round(W / 2)), rc = colourOf(Math.round(W / 2), W);
+    // judge each side next to its own avatar first (a long name block can reach across the middle),
+    // then fall back to the whole half
+    let lc = colourOf(Math.round(W * 0.13), Math.round(W * 0.3)), rc = colourOf(Math.round(W * 0.7), Math.round(W * 0.87));
+    if (!lc || !rc || lc === rc) { lc = colourOf(0, Math.round(W / 2)); rc = colourOf(Math.round(W / 2), W); }
     if (!lc || !rc || lc === rc) return null;
     // names sit in the upper half, between the avatar (outer ~15%) and the middle (turn icon)
     const yName = y0 + Math.round((y1 - y0) * 0.5);
@@ -311,7 +314,8 @@
   function countCols(img, b, band) {
     if (!band) return 0;
     const { data, width: W } = img;
-    const white = (x, y) => { const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2]; return Math.min(r, g, bl) > 200 && Math.max(r, g, bl) - Math.min(r, g, bl) < 45; };
+    // home-row letters are white or a tinted off-white (some themes, and colour-managed screenshots)
+    const white = (x, y) => { const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2]; return Math.min(r, g, bl) > 165 && Math.max(r, g, bl) - Math.min(r, g, bl) < 75; };
     const one = (yA, yB) => {
       const segs = []; let start = -1, last = -1;
       const gapMax = band * 0.18;
@@ -343,7 +347,7 @@
     // The home rows are exactly one cell tall, so measure them rather than assuming the cell shape
     // (it differs between phones, screen layouts and board sizes).
     const band = homeBandHeight(img, board);
-    const cols = opts.cols || countCols(img, board, band) || (band ? Math.max(3, Math.round(bw / (band * 1.06))) : 10);
+    const cols = opts.cols || countCols(img, board, band) || (band ? Math.max(3, Math.round(bw / (band * 1.1))) : 10);
     const cellW = bw / cols;
     const rows = opts.rows || Math.max(3, Math.round(bh / (band || cellW * 0.946)));
     const cellH = bh / rows;
@@ -374,7 +378,7 @@
     return { rows, cols, board, cells, topColor, myColor, header };
   }
 
-  const api = { readBoard, readHeader, sigDistance, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
+  const api = { readBoard, readHeader, sigDistance, countCols, homeBandHeight, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LGReader = api;
 })(typeof self !== 'undefined' ? self : this);
