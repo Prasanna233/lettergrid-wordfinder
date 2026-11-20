@@ -205,3 +205,5 @@ main[hidden], [hidden] { display: none !important; }
 #invView .controls { margin-top: 12px; }
 #invBoard { margin-top: 4px; }
 .tabs button { font-size: 14px; }
+.cut-b { color: #ffb38a; font-weight: 700; }
+.res .tot { color: var(--text); font-weight: 800; min-width: 44px; text-align: right; }

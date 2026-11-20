@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=27');
+  const worker = new Worker('solver.worker.js?v=28');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -42,6 +42,7 @@
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
       results = m.results;
+      if (isInvasion()) results.forEach(r => { if (r.reaches) { r.reaches = false; r.score -= 1000; } });   // reaching the base doesn't win in Invasion
       $('#solveBtn').textContent = 'Find words';
       updateSolveBtn();
       lastTotal = m.total; lastTimedOut = m.timedOut;
@@ -371,6 +372,7 @@
   function loadHistory() { try { return JSON.parse(localStorage.getItem('gwf-turns') || '[]'); } catch (e) { return []; } }
   function saveHistory(h) { try { localStorage.setItem('gwf-turns', JSON.stringify(h.slice(-40))); } catch (e) {} }
   function renderWinPct() {
+    if (isInvasion()) { $('#winPct').hidden = true; return; }          // race-mode estimate doesn't apply
     if (!wpPart.me || !wpPart.op || wpPart.key !== gridKey()) return;
     const me = outlook(wpPart.me), op = outlook(wpPart.op), pMe = winChance(me, op), pOp = 100 - pMe;
     // history: a new screenshot adds a turn (a fresh board starts a new game); edits and side switches update it
@@ -456,9 +458,17 @@
     win = { key: gridKey(), cells, land, count };
   }
   function winFor(i) { return win && win.key === gridKey() ? { on: win.cells.has(i), land: win.land.has(i) } : { on: false, land: false }; }
+  function isInvasion() { return !!grid && grid.mode === 'invasion'; }
   function syncWinNote() {
     const el = $('#winNote'); if (!el) return;
     if (!grid) { el.hidden = true; return; }
+    $('#chips [data-f="reaches"]').hidden = isInvasion();
+    if (isInvasion()) {
+      el.className = 'win-note yes'; el.hidden = false;
+      el.innerHTML = 'This is an <b>Invasion</b> board: the first to 20 cells wins and reaching the opponent\u2019s base doesn\u2019t. <button type="button" class="linkbtn inline" id="toInv">Open the Invasion tab</button>';
+      $('#toInv').addEventListener('click', () => showTab('invasion'));
+      return;
+    }
     if (!win || win.key !== gridKey()) {
       el.className = 'win-note';
       el.textContent = dictReady ? 'Finding winning words…' : 'Winning words will be counted once the dictionary loads.';
@@ -646,7 +656,7 @@
     if (sw) list = list.filter(r => r.word.startsWith(sw));
     if (ew) list = list.filter(r => r.word.endsWith(ew));
     if (settings.fCuts) list = list.filter(r => r.cuts > 0);
-    if (settings.fReaches) list = list.filter(r => r.reaches);
+    if (settings.fReaches && !isInvasion()) list = list.filter(r => r.reaches);
     if (f) {
       const re = new RegExp('^' + f.replace(/[^A-Z*?]/g, '').replace(/\?/g, '.').replace(/\*/g, '.*') + (f.includes('*') ? '$' : ''));
       list = list.filter(r => (f.includes('*') ? re.test(r.word) : r.word.includes(f.replace(/[^A-Z]/g, ''))));
@@ -781,7 +791,7 @@
     const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
     invList = m.results.map(r => ({ ...r, reaches: false, free: freeOf(r), swing: swingOf(r), after: me + gainOf(r), oppAfter: op - r.stolen }));
     invList.forEach(r => { r.wins = r.after >= T; });
-    invList.sort((a, b) => (b.wins - a.wins) || b.swing - a.swing || b.gained - a.gained || b.len - a.len || a.word.localeCompare(b.word));
+    invList.sort((a, b) => (b.wins - a.wins) || b.swing - a.swing || b.stolen - a.stolen || b.after - a.after || b.len - a.len || a.word.localeCompare(b.word));
     $('#invResultsCard').hidden = false;
     renderInv(true);
   }
@@ -795,7 +805,7 @@
       const r = invList[k], li = document.createElement('li');
       li.dataset.k = k; if (r.wins) li.className = 'win';
       const w = r.word.split('').map((ch, i) => (r.wild.includes(i) ? `<span class="wl">${ch}</span>` : ch)).join('');
-      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.wins ? '<span class="win-b">🏁 WIN</span>' : ''}${r.stolen ? `<span title="opponent letters cut (−1 each for them)">✂${r.stolen}</span>` : ''}<span class="len-b">${r.len}</span><span class="sc">+${r.swing}</span></span></div>`;
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.wins ? '<span class="win-b">🏁 WIN</span>' : ''}${r.stolen ? `<span class="cut-b" title="opponent letters cut: +1 for you, −1 for them">✂${r.stolen}</span>` : ''}<span class="len-b">${r.len}</span><span class="tot" title="your cells after this word">${Math.min(r.after, 99)}/${invT()}</span></span></div>`;
       frag.appendChild(li);
     }
     $('#invResults').appendChild(frag); invShown = end;
