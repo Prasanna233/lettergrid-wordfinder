@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=29">
+<link rel="stylesheet" href="style.css?v=31">
 </head>
 <body>
 <header class="top">
@@ -145,7 +145,7 @@
   </section>
   <section class="card" id="invResultsCard" hidden>
     <div class="card-head"><h2 id="invTitle">Words</h2></div>
-    <p class="score-help">Points: <b>+1</b> for every cell your word captures. Cutting one of the opponent's letters (✂) also takes it from them: <b>+1 for you, −1 for them</b>. The first to 20 cells wins — reaching the opponent's base doesn't. Words that take you to 20 come first (🏁 WIN), then the ones that gain you the most while cutting the most of theirs. N/20 = your cells after the word.</p>
+    <p class="score-help">Points: <b>+1</b> for every cell your word captures. Cutting one of the opponent's letters (✂) also takes it from them: <b>+1 for you, −1 for them</b>. The first to 20 cells wins — reaching the opponent's base doesn't. Words that take you to 20 come first (🏁 WIN), then the ones that gain you the most while cutting the most of theirs. N/20 = your cells after the word. “opp needs N” = cells the opponent still needs to reach 20 after your word. For the top 40 words the app also finds their best reply: <span style="color:#ff7a6b">⚠ red</span> = they can reach 20 next move, ✓ = they can't.</p>
     <ol id="invResults" class="results"></ol>
     <button id="invMore" class="ghost" hidden>Show more</button>
   </section>
@@ -207,9 +207,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 29 · Nov 20</p>
+<p class="app-ver">Version 31 · Nov 20</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=29"></script>
-<script src="app.js?v=29"></script>
+<script src="reader.js?v=31"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

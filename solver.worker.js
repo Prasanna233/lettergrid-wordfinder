@@ -278,6 +278,25 @@ function lookup({ prefix = '', length = 0, pattern = '', limit = 3000 }) {
   return { words, total };
 }
 
+// ---------- opponent replies (Invasion) ----------
+// For each of my candidate moves: play it on a copy of the board (my word's cells, and the neighbours of
+// any capture tile on it, become mine), then find the opponent's biggest single-word gain from there.
+function replies(grid, moves, opts) {
+  const { rows, cols } = grid, n = rows * cols, oppColor = grid.myColor === 'O' ? 'B' : 'O';
+  const oppHome = grid.myHome === 'top' ? 'bottom' : 'top';
+  const nb = i => { const r = Math.floor(i / cols), c = i % cols, o = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) o.push(rr * cols + cc); }
+    return o; };
+  return moves.map(path => {
+    const st = grid.state.slice();
+    for (const i of path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
+    const r = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, limit: 100000, wildFollowUp: false });
+    let best = 0, word = '';
+    for (const x of r.results) if (x.gained > best) { best = x.gained; word = x.word; }
+    return { best, word };
+  });
+}
+
 if (typeof self !== 'undefined') self.onmessage = async (e) => {
   const m = e.data;
   try {
@@ -289,6 +308,8 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
       const t = Date.now();
       const out = solve(m.grid, m.opts);
       self.postMessage({ type: 'solved', id: m.id, ms: Date.now() - t, ...out });
+    } else if (m.type === 'replies') {
+      self.postMessage({ type: 'replied', id: m.id, out: replies(m.grid, m.moves, m.opts) });
     } else if (m.type === 'lookup') {
       self.postMessage({ type: 'looked', id: m.id, ...lookup(m.query) });
     }
@@ -297,4 +318,4 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
   }
 };
 
-if (typeof module !== 'undefined') module.exports = { load, solve, lookup, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };
+if (typeof module !== 'undefined') module.exports = { load, solve, lookup, replies, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };

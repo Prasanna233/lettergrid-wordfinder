@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=29');
+  const worker = new Worker('solver.worker.js?v=31');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -37,7 +37,7 @@
       else if (m.id === 'wpme' + wpId) { wpPart.me = m; renderWinPct(); }
       else if (m.id === 'inv' + invId) invSolved(m);
       else if (m.id === 'ivme' + ivId) { ivPart.me = m; invScore(); }
-      else if (m.id === 'ivop' + ivId) { ivPart.op = m; invScore(); }
+      else if (m.id === 'ivop' + ivId) { ivPart.op = m; invScore(); if (!$('#invResultsCard').hidden) renderInv(true); }
       else if (m.id === 'wpop' + wpId) { wpPart.op = m; renderWinPct(); }
     } else if (m.type === 'solved') {
       if (m.id !== solveId) return;
@@ -51,6 +51,8 @@
       syncWinNote();
       if (!freshRun && !$('#gridView').hidden) $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
       freshRun = false;
+    } else if (m.type === 'replied') {
+      if (m.id === 'rp' + rpId) { m.out.forEach((o, k) => { const r = rpList[k]; if (r) { r.oppReply = o.best; r.oppReplyWord = o.word; } }); renderInv(true); }
     } else if (m.type === 'looked') {
       if (m.id === pzId) renderPuzzle(m);
     } else if (m.type === 'error') {
@@ -759,7 +761,7 @@
       det.appendChild(miniBoard(r));
       const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
       det.insertAdjacentHTML('beforeend', `<div class="facts"><span>New cells <b>+${r.free}</b> for you</span>${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
-        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b></span>${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? `<span>Their best reply: <b>${r.oppReplyWord || '—'}</b> +${r.oppReply}${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
       li.appendChild(det);
     });
   })();
@@ -795,6 +797,11 @@
   function freeOf(r) { return r.gained - r.stolen; }           // new free cells only
   function gainOf(r) { return r.gained; }                      // all cells I end up with (free + cut)
   function swingOf(r) { return r.gained + r.stolen; }          // change in (my cells - their cells)
+  // the opponent's biggest single-word gain on the current board (from the win-chance search)
+  function oppBestGain() {
+    if (!ivPart.op || ivPart.key !== gridKey()) return -1;   // not known yet: no warning
+    return ivPart.op.results.reduce((m, r) => Math.max(m, r.gained), 0);
+  }
   function invSolved(m) {
     $('#invFind').disabled = false; $('#invFind').textContent = 'Find words';
     const me = tiles(grid.myColor), op = tiles(other(grid.myColor)), T = invT();
@@ -803,7 +810,14 @@
     invList.sort((a, b) => (b.wins - a.wins) || b.swing - a.swing || b.stolen - a.stolen || b.after - a.after || b.len - a.len || a.word.localeCompare(b.word));
     $('#invResultsCard').hidden = false;
     renderInv(true);
+    rpList = invList.filter(r => !r.wins).slice(0, 40);
+    if (rpList.length) worker.postMessage({
+      type: 'replies', id: 'rp' + (++rpId),
+      grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
+      moves: rpList.map(r => r.path), opts: invOpts(settings.invStart || 'mine'),
+    });
   }
+  let rpId = 0, rpList = [];
   function renderInv(reset) {
     if (reset) { invShown = 0; invOpen = -1; $('#invResults').innerHTML = ''; }
     if (!invList.length && reset) { $('#invTitle').textContent = 'No words'; $('#invResults').innerHTML = '<li class="hint" style="padding:12px 0">No words with these settings. Try “Next to them” or a wider length.</li>'; $('#invMore').hidden = true; return; }
@@ -814,7 +828,14 @@
       const r = invList[k], li = document.createElement('li');
       li.dataset.k = k; if (r.wins) li.className = 'win';
       const w = r.word.split('').map((ch, i) => (r.wild.includes(i) ? `<span class="wl">${ch}</span>` : ch)).join('');
-      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.wins ? '<span class="win-b">🏁 WIN</span>' : ''}${r.stolen ? `<span class="cut-b" title="opponent letters cut: +1 for you, −1 for them">✂${r.stolen}</span>` : ''}<span class="len-b">${r.len}</span><span class="tot" title="your cells after this word">${Math.min(r.after, 99)}/${invT()}</span></span></div>`;
+      li.innerHTML = `<div class="res"><span class="word">${w}</span><span class="meta">${r.wins ? '<span class="win-b">🏁 WIN</span>' : ''}${r.stolen ? `<span class="cut-b" title="opponent letters cut: +1 for you, −1 for them">✂${r.stolen}</span>` : ''}${r.wins ? '' : (() => {
+        // cells the opponent still needs to reach the target after this word. For the top words the app
+        // also plays the word out and finds their best reply: red = they can reach the target next move.
+        const need = Math.max(0, invT() - r.oppAfter);
+        const known = r.oppReply !== undefined, danger = known && r.oppReply >= need;
+        const tip = known ? (danger ? `their best reply ${r.oppReplyWord} (+${r.oppReply}) reaches ${invT()}` : `their best reply is +${r.oppReply}${r.oppReplyWord ? ' (' + r.oppReplyWord + ')' : ''} — not enough`) : 'reply not checked';
+        return `<span class="need-b${danger ? ' danger' : known ? ' safe' : ''}" title="${tip}">opp needs ${need}${known ? (danger ? ' ⚠' : ' ✓') : ''}</span>`;
+      })()}<span class="len-b">${r.len}</span><span class="tot" title="your cells after this word">${Math.min(r.after, 99)}/${invT()}</span></span></div>`;
       frag.appendChild(li);
     }
     $('#invResults').appendChild(frag); invShown = end;
