@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=33">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
 <header class="top">
@@ -128,11 +128,12 @@
     <input id="invFile" type="file" accept="image/*" hidden>
     <p id="invInfo" class="hint">Add a screenshot of an Invasion game. Words capture the tiles they pass through; tiles taken from the opponent count for you and against them.</p>
     <div id="invBody" hidden>
-      <div class="side-ctl"><span class="lbl">I play from</span>
-        <div class="seg" id="invSideSeg"><button type="button" data-v="top">⬆ Top</button><button type="button" data-v="bottom">⬇ Bottom</button></div></div>
+      <div class="side-ctl"><span class="lbl">My base</span>
+        <div class="seg" id="invSideSeg"><button type="button" data-v="top">⬆ Top row</button><button type="button" data-v="bottom">⬇ Bottom row</button></div></div>
+      <p id="invFresh" class="win-note yes" hidden>🆕 <b>First word</b> — it must start from your base row, so only words starting there are listed. Wrong base? Pick the other one above.</p>
       <div id="invScore" class="win-pct"></div>
       <div class="ctl start-ctl"><span class="lbl">Word starts</span>
-        <div class="seg" id="invStartSeg"><button type="button" data-v="mine">On my tiles</button><button type="button" data-v="adjacent">Next to them</button><button type="button" data-v="anywhere">Anywhere</button></div></div>
+        <div class="seg seg-2x2" id="invStartSeg"><button type="button" data-v="base">From my base</button><button type="button" data-v="mine">On my tiles</button><button type="button" data-v="adjacent">Next to them</button><button type="button" data-v="anywhere">Anywhere</button></div></div>
       <div id="invBoard"></div>
       <div class="controls">
         <div class="ctl"><span class="lbl">Length</span>
@@ -210,9 +211,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 33 · Nov 20</p>
+<p class="app-ver">Version 34 · Nov 21</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=33"></script>
-<script src="app.js?v=33"></script>
+<script src="reader.js?v=34"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>

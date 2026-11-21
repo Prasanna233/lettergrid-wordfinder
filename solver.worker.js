@@ -113,6 +113,8 @@ function solve(grid, opts) {
   for (let i = 0; i < n; i++) {
     if (!letters[i] || !inSide[i]) continue;
     if (opts.start === 'anywhere') allowedStart[i] = 1;
+    // only from my base (home) row, on cells that are still mine
+    else if (opts.start === 'base') { if (Math.floor(i / cols) === myHomeRow && state[i] === myColor) allowedStart[i] = 1; }
     // winning-word rule: first letter on a free cell touching my cells, and not touching any cell the
     // opponent has captured (their home row doesn't count)
     else if (opts.start === 'frontier') {

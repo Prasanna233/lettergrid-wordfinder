@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=33');
+  const worker = new Worker('solver.worker.js?v=34');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -172,7 +172,11 @@
       if (grid.mode === 'invasion') {
         $('#freshNote').hidden = true;
         // a new game (only the home rows taken) starts with no played words
-        if (grid.state.every((st, i) => (st !== 'O' && st !== 'B') || Math.floor(i / grid.cols) === 0 || Math.floor(i / grid.cols) === grid.rows - 1)) { settings.invPlayed = ''; saveSettings(); }
+        const freshInv = grid.state.every((st, i) => (st !== 'O' && st !== 'B') || Math.floor(i / grid.cols) === 0 || Math.floor(i / grid.cols) === grid.rows - 1);
+        grid.invFresh = freshInv;
+        // a new game starts with no played words, and the first word must start from my base row
+        if (freshInv) { settings.invPlayed = ''; settings.invStart = 'base'; settings.invStartAuto = true; saveSettings(); }
+        else if (settings.invStartAuto) { settings.invStart = 'mine'; settings.invStartAuto = false; saveSettings(); }   // later turns: back to my tiles
         if ($('#invView').hidden) showTab('invasion'); else invSync();
         if (dictReady) invRun(); else invPending = true;
       } else {
@@ -751,7 +755,7 @@
   (function invInit() {
     for (const id of ['#invMin', '#invMax']) { const s = $(id); for (let k = 4; k <= 20; k++) s.insertAdjacentHTML('beforeend', `<option>${k}</option>`); }
     $('#invFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) readImageFile(f); e.target.value = ''; });
-    $('#invStartSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.invStart = b.dataset.v; saveSettings(); invSync(); });
+    $('#invStartSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.invStart = b.dataset.v; settings.invStartAuto = false; saveSettings(); invSync(); if (grid && !$('#invResultsCard').hidden) invRun(); });
     $('#invMin').addEventListener('change', e => { settings.invMin = +e.target.value; if ((settings.invMax || 20) < settings.invMin) settings.invMax = settings.invMin; saveSettings(); invSync(); });
     $('#invMax').addEventListener('change', e => { settings.invMax = +e.target.value; if ((settings.invMin || 4) > settings.invMax) settings.invMin = settings.invMax; saveSettings(); invSync(); });
     $('#invTarget').addEventListener('change', e => { settings.invTarget = Math.max(5, Math.min(200, +e.target.value || 20)); saveSettings(); invSync(); invScore(); renderInv(true); });
@@ -773,6 +777,7 @@
     });
   })();
   function invSync() {
+    $('#invFresh').hidden = !(grid && grid.invFresh);
     $('#invTarget').value = invT();
     if ($('#invPlayed') !== document.activeElement) $('#invPlayed').value = settings.invPlayed || '';
     $('#invStartSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (settings.invStart || 'mine')));
