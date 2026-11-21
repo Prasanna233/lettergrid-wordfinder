@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=34');
+  const worker = new Worker('solver.worker.js?v=35');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -449,8 +449,8 @@
     const myHomeRow = grid.myHome === 'top' ? 0 : grid.rows - 1;
     const oppHomeRow = grid.rows - 1 - myHomeRow;
     let cls = 'cell';
-    if (r === myHomeRow && s !== 'W') cls += s === grid.myColor ? ' home-mine' : ' opp';
-    else if (r === oppHomeRow && s !== 'W') cls += s === other(grid.myColor) ? ' home-opp' : ' mine';
+    if (r === myHomeRow && (s === 'O' || s === 'B')) cls += s === grid.myColor ? ' home-mine' : ' opp';
+    else if (r === oppHomeRow && (s === 'O' || s === 'B')) cls += s === other(grid.myColor) ? ' home-opp' : ' mine';
     else if (s === grid.myColor) cls += ' mine';
     else if (s === other(grid.myColor)) cls += ' opp';
     else if (s === 'W') cls += ' W';

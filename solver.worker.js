@@ -67,8 +67,11 @@ function solve(grid, opts) {
   const mine = new Uint8Array(n), opp = new Uint8Array(n), white = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / cols);
-    if (r === myHomeRow || state[i] === myColor) mine[i] = 1;
-    else if (r === oppHomeRow || state[i] === oppColor) opp[i] = 1;
+    // ownership comes from the cell's colour: in Invasion a base row can be invaded (cells of the
+    // other colour) or emptied (free cells), so the row alone says nothing
+    const known = state[i] === 'O' || state[i] === 'B';
+    if (state[i] === myColor || (!known && state[i] !== '.' && state[i] !== 'W' && r === myHomeRow)) mine[i] = 1;
+    else if (state[i] === oppColor || (!known && state[i] !== '.' && state[i] !== 'W' && r === oppHomeRow)) opp[i] = 1;
     if (state[i] === 'W') white[i] = 1;
   }
   const nbrs = [];

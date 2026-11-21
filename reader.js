@@ -299,14 +299,16 @@
       let n = 0, t = 0;
       for (let x = b.left + 2; x < b.right - 2; x += 3) {
         const p = (y * W + x) * 4, r = data[p], g = data[p + 1], bl = data[p + 2];
-        t++; if (isOrange(r, g, bl) || isBlue(r, g, bl) || (r > 230 && g > 120 && g < 170 && bl < 90) || (bl > 230 && r > 60 && r < 110)) n++;
+        // band colour, or the light letters printed on it (a home row can have free/dark cells in it
+        // once the opponent has cut some of its letters, so the letters must not break the band)
+        t++; if (isOrangeCell(r, g, bl) || isBlueCell(r, g, bl) || (r > 230 && g > 120 && g < 170 && bl < 90) || (bl > 230 && r > 60 && r < 110) || isTileLight(r, g, bl)) n++;
       }
       return n / t > 0.55;
     };
     let top = 0; for (let y = b.top; y < b.bottom && colored(y); y++) top++;
     let bot = 0; for (let y = b.bottom; y > b.top && colored(y); y--) bot++;
     const ok = h => h > 20 && h < (b.bottom - b.top) / 4;
-    if (ok(top) && ok(bot)) return (top + bot) / 2;
+    if (ok(top) && ok(bot)) return Math.abs(top - bot) > 0.25 * Math.max(top, bot) ? Math.max(top, bot) : (top + bot) / 2;   // a broken band only ever measures short
     return ok(top) ? top : ok(bot) ? bot : 0;
   }
 
