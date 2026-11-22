@@ -1,6 +1,6 @@
 // Network-first service worker: always fresh when online, cached copy when offline.
-const CACHE = 'gwf-v38';
-const SHELL = ['./', 'index.html', 'style.css?v=38', 'app.js?v=38', 'reader.js?v=38', 'solver.worker.js?v=38', 'templates.json?v=3', 'words.txt?v=1', 'icon.svg', 'manifest.webmanifest'];
+const CACHE = 'gwf-v39';
+const SHELL = ['./', 'index.html', 'style.css?v=39', 'app.js?v=39', 'reader.js?v=39', 'solver.worker.js?v=39', 'templates.json?v=3', 'words.txt?v=1', 'icon.svg', 'manifest.webmanifest'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

@@ -309,7 +309,7 @@ function replies(grid, moves, opts) {
 }
 
 // ---------- opponent's top replies to one move (Grid solver preview) ----------
-// rank 'race': a reply that reaches my base first, then the most rows it pushes, then cuts;
+// rank 'race': replies that cut my letters first, each group sorted by deepest push;
 // rank 'cut' (Invasion boards): most of my letters cut first.
 function topReplies(grid, move, opts, n, rank) {
   const { rows, cols } = grid, oppColor = grid.myColor === 'O' ? 'B' : 'O';
@@ -323,7 +323,8 @@ function topReplies(grid, move, opts, n, rank) {
   const res = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false }).results;
   res.sort(rank === 'cut'
     ? (a, b) => b.stolen - a.stolen || b.len - a.len
-    : (a, b) => (b.reaches - a.reaches) || b.depthGain - a.depthGain || b.stolen - a.stolen || b.len - a.len);
+    // race: replies that cut my letters come first, deepest push first; then the rest, deepest push first
+    : (a, b) => ((b.stolen > 0) - (a.stolen > 0)) || b.depthGain - a.depthGain || (b.reaches - a.reaches) || b.stolen - a.stolen || b.len - a.len);
   return res.slice(0, n).map(x => ({ word: x.word, path: x.path, wild: x.wild, reaches: !!x.reaches, depthGain: x.depthGain,
     cut: x.path.filter(i => st[i] === grid.myColor).length, cutCells: x.path.filter(i => st[i] === grid.myColor), last: x.path[x.path.length - 1] }));
 }
