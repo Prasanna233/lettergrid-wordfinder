@@ -312,6 +312,41 @@
     return ok(top) ? top : ok(bot) ? bot : 0;
   }
 
+  // Pick the row count that puts the letters in the middle of their cells. The home-row band can measure
+  // too tall (own cells right next to it) or too short (cut cells in it), so it is only one candidate.
+  function bestRowCount(img, b, cols, guess) {
+    const { data, width: W } = img;
+    const bw = b.right - b.left + 1, bh = b.bottom - b.top + 1, cw = bw / cols;
+    const cands = new Set([guess]);
+    for (let k = 3; k <= 24; k++) { const a = bh / k / cw; if (a > 0.7 && a < 1.15) cands.add(k); }
+    const lum = p => 0.3 * data[p] + 0.59 * data[p + 1] + 0.11 * data[p + 2];
+    const cost = k => {
+      const ch = bh / k; let tot = 0, n = 0;
+      for (let r = 0; r < k; r++) for (let c = 0; c < cols; c++) {
+        const x0 = Math.round(b.left + c * cw + cw * 0.15), x1 = Math.round(b.left + (c + 1) * cw - cw * 0.15);
+        const y0 = Math.round(b.top + r * ch + 2), y1 = Math.round(b.top + (r + 1) * ch - 2);
+        // background = brightness at the cell's corners; ink = pixels far from it
+        const bg = (lum(((y0 + 3) * W + x0) * 4) + lum(((y1 - 3) * W + x1) * 4)) / 2;
+        let top = -1, bot = -1, gap = 0, maxGap = 0;
+        for (let y = y0; y < y1; y += 2) {
+          let hit = 0;
+          for (let x = x0; x < x1; x += 3) if (Math.abs(lum((y * W + x) * 4) - bg) > 70) { hit++; if (hit > 2) break; }
+          if (hit > 2) { if (top < 0) top = y; bot = y; if (gap > maxGap) maxGap = gap; gap = 0; }
+          else if (top >= 0) gap += 2;
+        }
+        if (top < 0) { tot += 0.6; n++; continue; }                     // no letter found: poor fit
+        const mid = (y0 + y1) / 2, off = Math.abs((top + bot) / 2 - mid) / ch;
+        const edge = (top - y0 < ch * 0.06 || y1 - bot < ch * 0.06) ? 0.4 : 0;   // ink touching an edge = cut letter
+        const split = maxGap > ch * 0.12 ? 1 : 0;                         // two separate letters in one cell
+        tot += off + edge + split; n++;
+      }
+      return tot / n;
+    };
+    let best = guess, bestC = Infinity;
+    for (const k of cands) { const cst = cost(k); if (bestRowCount.debug) bestRowCount.debug.push([k, +cst.toFixed(3)]); if (cst < bestC - 1e-9) { bestC = cst; best = k; } }
+    return best;
+  }
+
   // number of columns = number of letters across a home row (boards come in different widths)
   function countCols(img, b, band) {
     if (!band) return 0;
@@ -351,7 +386,7 @@
     const band = homeBandHeight(img, board);
     const cols = opts.cols || countCols(img, board, band) || (band ? Math.max(3, Math.round(bw / (band * 1.1))) : 10);
     const cellW = bw / cols;
-    const rows = opts.rows || Math.max(3, Math.round(bh / (band || cellW * 0.946)));
+    const rows = opts.rows || bestRowCount(img, board, cols, Math.max(3, Math.round(bh / (band || cellW * 0.946))));
     const cellH = bh / rows;
     const cells = [];
     for (let r = 0; r < rows; r++) {
@@ -380,7 +415,7 @@
     return { rows, cols, board, cells, topColor, myColor, header };
   }
 
-  const api = { readBoard, readHeader, sigDistance, countCols, homeBandHeight, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
+  const api = { readBoard, readHeader, sigDistance, countCols, homeBandHeight, bestRowCount, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LGReader = api;
 })(typeof self !== 'undefined' ? self : this);
