@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=39');
+  const worker = new Worker('solver.worker.js?v=40');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -542,6 +542,8 @@
     const c = e.target.closest('.cell'); if (c) openEditor(+c.dataset.i);
   });
 
+  // the letter on a cell after my word: a 🤔 I passed through shows the letter I played there
+  function playedLetter(r, i) { const k = r.path.indexOf(i); if (k >= 0 && r.wild.includes(k)) return r.word[k]; return grid.letters[i] === '?' ? '🤔' : grid.letters[i]; }
   function cellName(i) { return `row ${Math.floor(i / grid.cols) + 1}, col ${(i % grid.cols) + 1}`; }
   function replyLastLetter(r) { return r.oppReplyWord ? r.oppReplyWord[r.oppReplyWord.length - 1] : ''; }
   function miniBoard(res, reply) {
@@ -766,7 +768,7 @@
     // the opponent's best replies after this word (their next move, from their territory)
     worker.postMessage({ type: 'topReplies', id: 'gr' + (++grId), n: 5, rank: isInvasion() ? 'cut' : 'race',
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      move: { path: r.path, word: r.word }, opts: { minLen: 4, maxLen: 20, start: 'mine' } });
+      move: { path: r.path, word: r.word, wild: r.wild }, opts: { minLen: 4, maxLen: 20, start: 'mine' } });
   });
   let grId = 0, grOpen = null;
   function showGridReplies(list) {
@@ -812,7 +814,7 @@
       if (hasReply) det.insertAdjacentHTML('beforeend', `<p class="hint reply-legend"><span style="color:#5ee37a">━ your word</span> · <span style="color:#ff6b5b">╍ their best reply ${r.oppReplyWord}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>`);
       const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
       det.insertAdjacentHTML('beforeend', `<div class="facts">${r.free ? `<span>Free cells taken: ${r.free} (0 points)</span>` : ''}${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
-        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? (r.oppReply ? `<span>Their best reply: <b>${r.oppReplyWord}</b> cuts <b>${r.oppReply}</b> of your letters (${r.oppReplyCut.map(i => grid.letters[i] === '?' ? '🤔' : grid.letters[i]).join(', ')}) and ends at <b>${replyLastLetter(r)}</b> (${cellName(r.oppReplyLast)})${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : '<span>Their best reply can\u2019t cut any of your letters ✓</span>') : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? (r.oppReply ? `<span>Their best reply: <b>${r.oppReplyWord}</b> cuts <b>${r.oppReply}</b> of your letters (${r.oppReplyCut.map(i => playedLetter(r, i)).join(', ')}) and ends at <b>${replyLastLetter(r)}</b> (${cellName(r.oppReplyLast)})${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : '<span>Their best reply can\u2019t cut any of your letters ✓</span>') : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
       li.appendChild(det);
     });
   })();
@@ -869,7 +871,7 @@
     if (rpList.length) worker.postMessage({
       type: 'replies', id: 'rp' + (++rpId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      moves: rpList.map(r => ({ path: r.path, word: r.word })), opts: invOpts(settings.invStart || 'mine'),
+      moves: rpList.map(r => ({ path: r.path, word: r.word, wild: r.wild })), opts: invOpts(settings.invStart || 'mine'),
     });
   }
   let rpId = 0, rpList = [];

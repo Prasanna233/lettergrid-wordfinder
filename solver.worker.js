@@ -285,6 +285,14 @@ function lookup({ prefix = '', length = 0, pattern = '', limit = 3000 }) {
   return { words, total };
 }
 
+// letters after my move: every 🤔 my word passed through is now the letter I played there
+function lettersAfter(letters, move) {
+  if (!move || !move.word || !move.wild || !move.wild.length) return letters;
+  const L = letters.slice();
+  for (const k of move.wild) { const cell = move.path[k]; if (L[cell] === '?') L[cell] = move.word[k]; }
+  return L;
+}
+
 // ---------- opponent replies (Invasion) ----------
 // For each of my candidate moves: play it on a copy of the board (my word's cells, and the neighbours of
 // any capture tile on it, become mine), then find the opponent's biggest single-word gain from there.
@@ -298,7 +306,7 @@ function replies(grid, moves, opts) {
     const path = mv.path || mv, st = grid.state.slice();
     for (const i of path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
     const exclude = (opts.exclude || []).concat(mv.word ? [mv.word] : []);
-    const r = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false });
+    const r = solve({ rows, cols, letters: lettersAfter(grid.letters, mv), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false });
     let bestR = null;
     for (const x of r.results) if (!bestR || x.stolen > bestR.stolen || (x.stolen === bestR.stolen && x.len > bestR.len)) bestR = x;   // points = my letters they cut
     if (!bestR || !bestR.stolen) return { best: 0, word: '' };
@@ -320,7 +328,7 @@ function topReplies(grid, move, opts, n, rank) {
   const st = grid.state.slice();
   for (const i of move.path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
   const exclude = (opts.exclude || []).concat(move.word ? [move.word] : []);
-  const res = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false }).results;
+  const res = solve({ rows, cols, letters: lettersAfter(grid.letters, move), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false }).results;
   res.sort(rank === 'cut'
     ? (a, b) => b.stolen - a.stolen || b.len - a.len
     // race: replies that cut my letters come first, deepest push first; then the rest, deepest push first
@@ -352,4 +360,4 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
   }
 };
 
-if (typeof module !== 'undefined') module.exports = { load, solve, lookup, replies, topReplies, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };
+if (typeof module !== 'undefined') module.exports = { load, solve, lookup, replies, topReplies, lettersAfter, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };
