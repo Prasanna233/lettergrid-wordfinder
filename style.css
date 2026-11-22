@@ -218,3 +218,7 @@ main[hidden], [hidden] { display: none !important; }
 .cell.rlast { box-shadow: inset 0 0 0 3px #ff6b5b, inset 0 0 12px rgba(255,107,91,.6); }
 .cell .rend { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font-size: 9px; font-weight: 800; color: #ff6b5b; text-transform: uppercase; }
 .reply-legend { margin: 6px 0 0 !important; font-size: 12px; }
+.gr-list { margin: 4px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+.gr-list b { color: var(--text); }
+.gr-list li.danger { color: #ff9a8d; }
+.gr-list li.danger b { color: #ffb3a8; }

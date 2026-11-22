@@ -308,6 +308,26 @@ function replies(grid, moves, opts) {
   });
 }
 
+// ---------- opponent's top replies to one move (Grid solver preview) ----------
+// rank 'race': a reply that reaches my base first, then the most rows it pushes, then cuts;
+// rank 'cut' (Invasion boards): most of my letters cut first.
+function topReplies(grid, move, opts, n, rank) {
+  const { rows, cols } = grid, oppColor = grid.myColor === 'O' ? 'B' : 'O';
+  const oppHome = grid.myHome === 'top' ? 'bottom' : 'top';
+  const nb = i => { const r = Math.floor(i / cols), c = i % cols, o = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) o.push(rr * cols + cc); }
+    return o; };
+  const st = grid.state.slice();
+  for (const i of move.path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
+  const exclude = (opts.exclude || []).concat(move.word ? [move.word] : []);
+  const res = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false }).results;
+  res.sort(rank === 'cut'
+    ? (a, b) => b.stolen - a.stolen || b.len - a.len
+    : (a, b) => (b.reaches - a.reaches) || b.depthGain - a.depthGain || b.stolen - a.stolen || b.len - a.len);
+  return res.slice(0, n).map(x => ({ word: x.word, path: x.path, wild: x.wild, reaches: !!x.reaches, depthGain: x.depthGain,
+    cut: x.path.filter(i => st[i] === grid.myColor).length, cutCells: x.path.filter(i => st[i] === grid.myColor), last: x.path[x.path.length - 1] }));
+}
+
 if (typeof self !== 'undefined') self.onmessage = async (e) => {
   const m = e.data;
   try {
@@ -319,6 +339,8 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
       const t = Date.now();
       const out = solve(m.grid, m.opts);
       self.postMessage({ type: 'solved', id: m.id, ms: Date.now() - t, ...out });
+    } else if (m.type === 'topReplies') {
+      self.postMessage({ type: 'topReplied', id: m.id, out: topReplies(m.grid, m.move, m.opts, m.n || 5, m.rank) });
     } else if (m.type === 'replies') {
       self.postMessage({ type: 'replied', id: m.id, out: replies(m.grid, m.moves, m.opts) });
     } else if (m.type === 'lookup') {
@@ -329,4 +351,4 @@ if (typeof self !== 'undefined') self.onmessage = async (e) => {
   }
 };
 
-if (typeof module !== 'undefined') module.exports = { load, solve, lookup, replies, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };
+if (typeof module !== 'undefined') module.exports = { load, solve, lookup, replies, topReplies, insert, _reset: () => { N = 0; cap = 0; ch = child = sib = term = null; wordCount = 0; newNode(255); } };

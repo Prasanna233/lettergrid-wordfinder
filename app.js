@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=37');
+  const worker = new Worker('solver.worker.js?v=38');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -51,6 +51,8 @@
       syncWinNote();
       if (!freshRun && !$('#gridView').hidden) $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
       freshRun = false;
+    } else if (m.type === 'topReplied') {
+      if (m.id === 'gr' + grId) showGridReplies(m.out);
     } else if (m.type === 'replied') {
       if (m.id === 'rp' + rpId) { m.out.forEach((o, k) => { const r = rpList[k]; if (r) { r.oppReply = o.best; r.oppReplyWord = o.word; r.oppReplyPath = o.path || []; r.oppReplyCut = o.cutCells || []; r.oppReplyLast = o.last; } }); renderInv(true); }
     } else if (m.type === 'looked') {
@@ -756,8 +758,31 @@
       <span>Cells gained <b>${r.gained}</b></span><span>Stolen <b>${r.stolen}</b></span>${r.cuts ? `<span>Cuts through <b>${r.cuts}</b> opponent letter${r.cuts > 1 ? 's' : ''}</span>` : ''}
       <span>Rows advanced <b>${r.depthGain}</b></span>${r.whiteHits ? `<span>Capture tiles <b>${r.whiteHits}</b></span>` : ''}
       ${r.reaches ? `<span class="win-fact">🏁 <b>Winning word</b> — reaches the opponent's base at ${(r.winAt || []).map(k => `<b>${r.word[k]}</b> (letter ${k + 1})`).join(', ')}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+    const wins = r.reaches && !isInvasion();
+    det.insertAdjacentHTML('beforeend', `<div class="gr-replies"><p class="hint">${wins ? '🏁 This word wins the game, so the opponent gets no reply.' : 'Finding the opponent\u2019s best replies…'}</p></div>`);
     li.appendChild(det);
+    grOpen = r;
+    if (wins) return;
+    // the opponent's best replies after this word (their next move, from their territory)
+    worker.postMessage({ type: 'topReplies', id: 'gr' + (++grId), n: 5, rank: isInvasion() ? 'cut' : 'race',
+      grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
+      move: { path: r.path, word: r.word }, opts: { minLen: 4, maxLen: 20, start: 'mine' } });
   });
+  let grId = 0, grOpen = null;
+  function showGridReplies(list) {
+    const det = $('#results .detail'), box = det && det.querySelector('.gr-replies');
+    if (!box || !grOpen) return;
+    const myBase = grid.myHome === 'top' ? 'top' : 'bottom';
+    if (!list.length) { box.innerHTML = '<p class="hint">↩ The opponent has no word to reply with after this one ✓</p>'; return; }
+    const top = list[0];
+    // redraw the preview board with their best reply on it
+    const old = det.querySelector('.board.mini');
+    if (old) old.replaceWith(miniBoard(grOpen, { path: top.path, cutCells: top.cutCells, last: top.last }));
+    const letter = x => x.word[x.word.length - 1];
+    box.innerHTML = `<p class="hint reply-legend"><span style="color:#5ee37a">━ your word</span> · <span style="color:#ff6b5b">╍ their best reply ${top.word}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>
+      <div class="lbl" style="margin-top:8px">Opponent\u2019s best replies after this word</div>
+      <ol class="gr-list">${list.map((x, k) => `<li class="${x.reaches ? 'danger' : ''}"><b>${x.word}</b> — ${x.cut ? `cuts <b>✂${x.cut}</b> of your letters` : 'cuts none of yours'}, ends at <b>${letter(x)}</b> (${cellName(x.last)})${x.reaches ? ` · <b>🏁 reaches your base (${myBase} row)</b>` : x.depthGain ? ` · pushes ${x.depthGain} row${x.depthGain > 1 ? 's' : ''}` : ''}</li>`).join('')}</ol>`;
+  }
 
   // ---------------- Invasion ----------------
   // Smaller boards are played for tiles: whoever holds the most (first to the target shown in the header,
