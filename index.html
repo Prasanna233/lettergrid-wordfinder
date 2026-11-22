@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
 <header class="top">
@@ -149,7 +149,7 @@
   </section>
   <section class="card" id="invResultsCard" hidden>
     <div class="card-head"><h2 id="invTitle">Words</h2></div>
-    <p class="score-help">Points: only cutting the opponent's letters (✂) scores — <b>+1 for you, −1 for them</b> per letter. Capturing free (empty) cells scores nothing. The first to 20 cells wins — reaching the opponent's base doesn't. Words that take you to 20 come first (🏁 WIN), then the ones that gain you the most while cutting the most of theirs. N/20 = your cells after the word. “opp needs N” = cells the opponent still needs to reach 20 after your word. For the top 40 words the app also finds their best reply: <span style="color:#ff7a6b">⚠ red</span> = they can reach 20 next move, ✓ = they can't.</p>
+    <p class="score-help">Points: only cutting the opponent's letters (✂) scores — <b>+1 for you, −1 for them</b> per letter. Capturing free (empty) cells scores nothing. The first to 20 cells wins — reaching the opponent's base doesn't. Words that take you to 20 come first (🏁 WIN), then the ones that gain you the most while cutting the most of theirs. N/20 = your cells after the word. “opp needs N” = cells the opponent still needs to reach 20 after your word. For the top 40 words the app also finds their best reply: <span style="color:#ff7a6b">⚠ red</span> = they can reach 20 next move, ✓ = they can't. The ↩ line under a word shows how many of your letters that reply cuts and the last letter it reaches; tap the word to see it drawn on the board.</p>
     <ol id="invResults" class="results"></ol>
     <button id="invMore" class="ghost" hidden>Show more</button>
   </section>
@@ -211,9 +211,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 36 · Nov 22</p>
+<p class="app-ver">Version 37 · Nov 22</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=36"></script>
-<script src="app.js?v=36"></script>
+<script src="reader.js?v=37"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

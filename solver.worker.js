@@ -299,9 +299,12 @@ function replies(grid, moves, opts) {
     for (const i of path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
     const exclude = (opts.exclude || []).concat(mv.word ? [mv.word] : []);
     const r = solve({ rows, cols, letters: grid.letters, state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false });
-    let best = 0, word = '';
-    for (const x of r.results) if (x.stolen > best) { best = x.stolen; word = x.word; }   // points = my letters they cut
-    return { best, word };
+    let bestR = null;
+    for (const x of r.results) if (!bestR || x.stolen > bestR.stolen || (x.stolen === bestR.stolen && x.len > bestR.len)) bestR = x;   // points = my letters they cut
+    if (!bestR || !bestR.stolen) return { best: 0, word: '' };
+    // which of my cells (after my word) their reply cuts, and where it ends
+    const cutCells = bestR.path.filter(i => st[i] === grid.myColor);
+    return { best: bestR.stolen, word: bestR.word, path: bestR.path, wild: bestR.wild, cutCells, last: bestR.path[bestR.path.length - 1] };
   });
 }
 

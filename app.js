@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=36');
+  const worker = new Worker('solver.worker.js?v=37');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -52,7 +52,7 @@
       if (!freshRun && !$('#gridView').hidden) $('#resultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
       freshRun = false;
     } else if (m.type === 'replied') {
-      if (m.id === 'rp' + rpId) { m.out.forEach((o, k) => { const r = rpList[k]; if (r) { r.oppReply = o.best; r.oppReplyWord = o.word; } }); renderInv(true); }
+      if (m.id === 'rp' + rpId) { m.out.forEach((o, k) => { const r = rpList[k]; if (r) { r.oppReply = o.best; r.oppReplyWord = o.word; r.oppReplyPath = o.path || []; r.oppReplyCut = o.cutCells || []; r.oppReplyLast = o.last; } }); renderInv(true); }
     } else if (m.type === 'looked') {
       if (m.id === pzId) renderPuzzle(m);
     } else if (m.type === 'error') {
@@ -540,7 +540,9 @@
     const c = e.target.closest('.cell'); if (c) openEditor(+c.dataset.i);
   });
 
-  function miniBoard(res) {
+  function cellName(i) { return `row ${Math.floor(i / grid.cols) + 1}, col ${(i % grid.cols) + 1}`; }
+  function replyLastLetter(r) { return r.oppReplyWord ? r.oppReplyWord[r.oppReplyWord.length - 1] : ''; }
+  function miniBoard(res, reply) {
     const wrap = document.createElement('div');
     wrap.className = 'board mini';
     wrap.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`; wrap.style.setProperty('--cols', grid.cols);
@@ -556,6 +558,14 @@
       if (k !== undefined && res.reaches && (res.winAt || []).includes(k)) { d.classList.add('land'); d.insertAdjacentHTML('beforeend', '<span class="flag">🏁</span>'); }
       wrap.appendChild(d);
     }
+    if (reply && reply.path && reply.path.length) {
+      const cut = new Set(reply.cutCells || []);
+      [...wrap.children].forEach((d, i) => {
+        if (cut.has(i)) { d.classList.add('rcut'); d.insertAdjacentHTML('beforeend', '<span class="rx">✂</span>'); }
+        if (i === reply.last) { d.classList.add('rlast'); d.insertAdjacentHTML('beforeend', '<span class="rend">end</span>'); }
+        if (reply.path.includes(i) && d.classList.contains('dim')) d.classList.remove('dim');
+      });
+    }
     if (!res.path.length) return wrap;
     const W = grid.cols * 100, H = grid.rows * 95;
     const pts = res.path.map(i => `${(i % grid.cols) * 100 + 50},${Math.floor(i / grid.cols) * 95 + 47.5}`).join(' ');
@@ -563,7 +573,10 @@
     wrap.insertAdjacentHTML('beforeend',
       `<svg class="path" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         <polyline points="${pts}" fill="none" stroke="#5ee37a" stroke-opacity=".6" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="${sx}" cy="${sy}" r="16" fill="none" stroke="#5ee37a" stroke-width="7"/></svg>`);
+        <circle cx="${sx}" cy="${sy}" r="16" fill="none" stroke="#5ee37a" stroke-width="7"/>${reply && reply.path && reply.path.length ? (() => {
+          const rp = reply.path.map(i => `${(i % grid.cols) * 100 + 50},${Math.floor(i / grid.cols) * 95 + 47.5}`).join(' ');
+          return `<polyline points="${rp}" fill="none" stroke="#ff6b5b" stroke-opacity=".85" stroke-width="7" stroke-dasharray="16 12" stroke-linecap="round" stroke-linejoin="round"/>`;
+        })() : ''}</svg>`);
     return wrap;
   }
 
@@ -769,10 +782,12 @@
       if (invOpen === k) { invOpen = -1; return; }
       invOpen = k; const r = invList[k];
       const det = document.createElement('div'); det.className = 'detail';
-      det.appendChild(miniBoard(r));
+      const hasReply = r.oppReply !== undefined && r.oppReplyPath && r.oppReplyPath.length;
+      det.appendChild(miniBoard(r, hasReply ? { path: r.oppReplyPath, cutCells: r.oppReplyCut, last: r.oppReplyLast } : null));
+      if (hasReply) det.insertAdjacentHTML('beforeend', `<p class="hint reply-legend"><span style="color:#5ee37a">━ your word</span> · <span style="color:#ff6b5b">╍ their best reply ${r.oppReplyWord}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>`);
       const wilds = r.wild.map(idx => `🤔 = <b>${r.word[idx]}</b>`).join(', ');
       det.insertAdjacentHTML('beforeend', `<div class="facts">${r.free ? `<span>Free cells taken: ${r.free} (0 points)</span>` : ''}${r.stolen ? `<span>Cuts <b>${r.stolen}</b> opponent letter${r.stolen === 1 ? '' : 's'} (+${r.stolen} for you, −${r.stolen} for them)</span>` : ''}
-        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? `<span>Their best reply: <b>${r.oppReplyWord || '—'}</b> +${r.oppReply}${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
+        <span>After this word: you <b>${r.after}</b>, opponent <b>${r.oppAfter}</b> (needs ${Math.max(0, invT() - r.oppAfter)} more)</span>${r.oppReply !== undefined ? (r.oppReply ? `<span>Their best reply: <b>${r.oppReplyWord}</b> cuts <b>${r.oppReply}</b> of your letters (${r.oppReplyCut.map(i => grid.letters[i] === '?' ? '🤔' : grid.letters[i]).join(', ')}) and ends at <b>${replyLastLetter(r)}</b> (${cellName(r.oppReplyLast)})${r.oppReply >= invT() - r.oppAfter ? ' — <b style="color:#ff7a6b">reaches ' + invT() + '</b>' : ' — not enough to win'}</span>` : '<span>Their best reply can\u2019t cut any of your letters ✓</span>') : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
       li.appendChild(det);
     });
   })();
@@ -850,7 +865,7 @@
         const known = r.oppReply !== undefined, danger = known && r.oppReply >= need;
         const tip = known ? (danger ? `their best reply ${r.oppReplyWord} (+${r.oppReply}) reaches ${invT()}` : `their best reply is +${r.oppReply}${r.oppReplyWord ? ' (' + r.oppReplyWord + ')' : ''} — not enough`) : 'reply not checked';
         return `<span class="need-b${danger ? ' danger' : known ? ' safe' : ''}" title="${tip}">opp needs ${need}${known ? (danger ? ' ⚠' : ' ✓') : ''}</span>`;
-      })()}<span class="len-b">${r.len}</span><span class="tot" title="your cells after this word">${Math.min(r.after, 99)}/${invT()}</span></span></div>`;
+      })()}<span class="len-b">${r.len}</span><span class="tot" title="your cells after this word">${Math.min(r.after, 99)}/${invT()}</span></span></div>${!r.wins && r.oppReply !== undefined ? `<div class="reply-line${r.oppReply >= Math.max(0, invT() - r.oppAfter) ? ' danger' : ''}">${r.oppReply ? `↩ Their reply <b>${r.oppReplyWord}</b> cuts <b>✂${r.oppReply}</b> of yours, ends at <b>${replyLastLetter(r)}</b> (${cellName(r.oppReplyLast)})` : '↩ Their reply can\u2019t cut any of your letters'}</div>` : ''}`;
       frag.appendChild(li);
     }
     $('#invResults').appendChild(frag); invShown = end;
