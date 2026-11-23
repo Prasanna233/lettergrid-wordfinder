@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=41');
+  const worker = new Worker('solver.worker.js?v=42');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -570,8 +570,16 @@
         if (reply.path.includes(i) && d.classList.contains('dim')) d.classList.remove('dim');
       });
     }
-    if (!res.path.length) return wrap;
+    if (!res.path.length && !(reply && reply.alone && reply.path && reply.path.length)) return wrap;
     const W = grid.cols * 100, H = grid.rows * 95;
+    if (!res.path.length) {                                 // reply only
+      const rp = reply.path.map(i => `${(i % grid.cols) * 100 + 50},${Math.floor(i / grid.cols) * 95 + 47.5}`).join(' ');
+      const [rx, ry] = rp.split(' ')[0].split(',');
+      wrap.insertAdjacentHTML('beforeend', `<svg class="path" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points="${rp}" fill="none" stroke="#ff6b5b" stroke-opacity=".9" stroke-width="7" stroke-dasharray="16 12" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${rx}" cy="${ry}" r="16" fill="none" stroke="#ff6b5b" stroke-width="6"/></svg>`);
+      return wrap;
+    }
     const pts = res.path.map(i => `${(i % grid.cols) * 100 + 50},${Math.floor(i / grid.cols) * 95 + 47.5}`).join(' ');
     const [sx, sy] = pts.split(' ')[0].split(',');
     wrap.insertAdjacentHTML('beforeend',
@@ -762,7 +770,13 @@
       ${r.reaches ? `<span class="win-fact">🏁 <b>Winning word</b> — reaches the opponent's base at ${(r.winAt || []).map(k => `<b>${r.word[k]}</b> (letter ${k + 1})`).join(', ')}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
     const wins = r.reaches && !isInvasion();
     grOpen = r;
-    if (settings.grReplies === 'off') { li.appendChild(det); return; }   // replies switched off
+    const mode = grMode();
+    if (mode === 'mine') { li.appendChild(det); return; }   // my word only
+    if (mode === 'opp') {                                   // opponent replies only: drop my word's path and details
+      det.querySelector('.facts') && det.querySelector('.facts').remove();
+      det.classList.add('opp-only');
+      const mb = det.querySelector('.board.mini'); if (mb) mb.replaceWith(miniBoard({ path: [], wild: [], word: '' }));
+    }
     det.insertAdjacentHTML('beforeend', `<div class="gr-replies"><p class="hint">${wins ? '🏁 This word wins the game, so the opponent gets no reply.' : 'Finding the opponent\u2019s best replies…'}</p></div>`);
     li.appendChild(det);
     if (wins) return;
@@ -773,7 +787,8 @@
   });
   let grId = 0, grOpen = null;
   // on/off switch for the opponent replies in the word preview (remembered)
-  function syncGrRep() { $('#grRepSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (settings.grReplies === 'off' ? 'off' : 'on'))); }
+  function grMode() { const v = settings.grReplies; return v === 'off' ? 'mine' : v === 'mine' || v === 'opp' ? v : 'both'; }
+  function syncGrRep() { $('#grRepSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === grMode())); }
   $('#grRepSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     settings.grReplies = b.dataset.v; saveSettings(); syncGrRep();
@@ -790,9 +805,10 @@
     const top = list[0];
     // redraw the preview board with their best reply on it
     const old = det.querySelector('.board.mini');
-    if (old) old.replaceWith(miniBoard(grOpen, { path: top.path, cutCells: top.cutCells, last: top.last }));
+    const oppOnly = det.classList.contains('opp-only');
+    if (old) old.replaceWith(miniBoard(oppOnly ? { path: [], wild: [], word: '' } : grOpen, { path: top.path, cutCells: top.cutCells, last: top.last, alone: oppOnly }));
     const letter = x => x.word[x.word.length - 1];
-    box.innerHTML = `<p class="hint reply-legend"><span style="color:#5ee37a">━ your word</span> · <span style="color:#ff6b5b">╍ their best reply ${top.word}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>
+    box.innerHTML = `<p class="hint reply-legend">${oppOnly ? `After you play <b>${grOpen.word}</b>: ` : '<span style="color:#5ee37a">━ your word</span> · '}<span style="color:#ff6b5b">╍ their best reply ${top.word}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>
       <div class="lbl" style="margin-top:8px">Opponent\u2019s best replies after this word</div>
       <ol class="gr-list">${list.map((x, k) => `<li class="${x.reaches ? 'danger' : ''}"><b>${x.word}</b> — ${x.cut ? `cuts <b>✂${x.cut}</b> of your letters` : 'cuts none of yours'}, ends at <b>${letter(x)}</b> (${cellName(x.last)})${x.reaches ? ` · <b>🏁 reaches your base (${myBase} row)</b>` : x.depthGain ? ` · pushes ${x.depthGain} row${x.depthGain > 1 ? 's' : ''}` : ''}</li>`).join('')}</ol>`;
   }

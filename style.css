@@ -222,3 +222,4 @@ main[hidden], [hidden] { display: none !important; }
 .gr-list b { color: var(--text); }
 .gr-list li.danger { color: #ff9a8d; }
 .gr-list li.danger b { color: #ffb3a8; }
+#grRepSeg button { font-size: 13px; }
