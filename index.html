@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=40">
+<link rel="stylesheet" href="style.css?v=41">
 </head>
 <body>
 <header class="top">
@@ -80,6 +80,10 @@
         <div class="len">
           <select id="minLen"></select><span>to</span><select id="maxLen"></select><span>letters</span>
         </div>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Opponent replies in word preview</span>
+        <div class="seg" id="grRepSeg"><button type="button" data-v="on">Show</button><button type="button" data-v="off">Hide</button></div>
       </div>
       <button id="solveBtn" class="primary">Find words</button>
     </div>
@@ -211,9 +215,9 @@
   </div>
 </div>
 
-<p class="app-ver">Version 40 · Nov 22</p>
+<p class="app-ver">Version 41 · Nov 23</p>
 <canvas id="work" hidden></canvas>
-<script src="reader.js?v=40"></script>
-<script src="app.js?v=40"></script>
+<script src="reader.js?v=41"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=40');
+  const worker = new Worker('solver.worker.js?v=41');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -761,9 +761,10 @@
       <span>Rows advanced <b>${r.depthGain}</b></span>${r.whiteHits ? `<span>Capture tiles <b>${r.whiteHits}</b></span>` : ''}
       ${r.reaches ? `<span class="win-fact">🏁 <b>Winning word</b> — reaches the opponent's base at ${(r.winAt || []).map(k => `<b>${r.word[k]}</b> (letter ${k + 1})`).join(', ')}</span>` : ''}${wilds ? `<span>${wilds}</span>` : ''}</div>`);
     const wins = r.reaches && !isInvasion();
+    grOpen = r;
+    if (settings.grReplies === 'off') { li.appendChild(det); return; }   // replies switched off
     det.insertAdjacentHTML('beforeend', `<div class="gr-replies"><p class="hint">${wins ? '🏁 This word wins the game, so the opponent gets no reply.' : 'Finding the opponent\u2019s best replies…'}</p></div>`);
     li.appendChild(det);
-    grOpen = r;
     if (wins) return;
     // the opponent's best replies after this word (their next move, from their territory)
     worker.postMessage({ type: 'topReplies', id: 'gr' + (++grId), n: 5, rank: isInvasion() ? 'cut' : 'race',
@@ -771,6 +772,16 @@
       move: { path: r.path, word: r.word, wild: r.wild }, opts: { minLen: 4, maxLen: 20, start: 'mine' } });
   });
   let grId = 0, grOpen = null;
+  // on/off switch for the opponent replies in the word preview (remembered)
+  function syncGrRep() { $('#grRepSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (settings.grReplies === 'off' ? 'off' : 'on'))); }
+  $('#grRepSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    settings.grReplies = b.dataset.v; saveSettings(); syncGrRep();
+    // refresh an open preview so the change shows straight away
+    const li = $('#results .detail') && $('#results .detail').closest('li[data-k]');
+    if (li) { const k = +li.dataset.k; openIdx = -1; li.querySelector('.res').click(); }
+  });
+  syncGrRep();
   function showGridReplies(list) {
     const det = $('#results .detail'), box = det && det.querySelector('.gr-replies');
     if (!box || !grOpen) return;
