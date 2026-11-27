@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=44');
+  const worker = new Worker('solver.worker.js?v=45');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -773,6 +773,8 @@
   }
   $('#moreBtn').addEventListener('click', () => renderResults(false));
   $('#results').addEventListener('click', e => {
+    const rli = e.target.closest('.gr-list li[data-r]');
+    if (rli) { drawGridReply(+rli.dataset.r); return; }      // preview another opponent reply
     const li = e.target.closest('li[data-k]'); if (!li) return;
     const k = +li.dataset.k;
     const prev = $('#results .detail'); if (prev) prev.remove();
@@ -802,7 +804,7 @@
     // the opponent's best replies after this word (their next move, from their territory)
     worker.postMessage({ type: 'topReplies', id: 'gr' + (++grId), n: 5, rank: isInvasion() ? 'cut' : 'race',
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      move: { path: r.path, word: r.word, wild: r.wild }, opts: { minLen: 4, maxLen: 20, start: 'mine' } });
+      move: { path: r.path, word: r.word, wild: r.wild }, opts: { minLen: 4, maxLen: 12, start: 'mine' } });
   });
   let grId = 0, grOpen = null;
   // on/off switch for the opponent replies in the word preview (remembered)
@@ -821,15 +823,24 @@
     if (!box || !grOpen) return;
     const myBase = grid.myHome === 'top' ? 'top' : 'bottom';
     if (!list.length) { box.innerHTML = '<p class="hint">↩ The opponent has no word to reply with after this one ✓</p>'; return; }
-    const top = list[0];
-    // redraw the preview board with their best reply on it
-    const old = det.querySelector('.board.mini');
-    const oppOnly = det.classList.contains('opp-only');
-    if (old) old.replaceWith(miniBoard(oppOnly ? { path: [], wild: [], word: '' } : grOpen, { path: top.path, cutCells: top.cutCells, last: top.last, alone: oppOnly }));
+    grReplies = list;
     const letter = x => x.word[x.word.length - 1];
-    box.innerHTML = `<p class="hint reply-legend">${oppOnly ? `After you play <b>${grOpen.word}</b>: ` : '<span style="color:#5ee37a">━ your word</span> · '}<span style="color:#ff6b5b">╍ their best reply ${top.word}</span> · ✂ = your letters it cuts · <b>end</b> = last letter it reaches</p>
-      <div class="lbl" style="margin-top:8px">Opponent\u2019s best replies after this word</div>
-      <ol class="gr-list">${list.map((x, k) => `<li class="${x.reaches ? 'danger' : ''}"><b>${x.word}</b> — ${x.cut ? `cuts <b>✂${x.cut}</b> of your letters` : 'cuts none of yours'}, ends at <b>${letter(x)}</b> (${cellName(x.last)})${x.reaches ? ` · <b>🏁 reaches your base (${myBase} row)</b>` : x.depthGain ? ` · pushes ${x.depthGain} row${x.depthGain > 1 ? 's' : ''}` : ''}</li>`).join('')}</ol>`;
+    box.innerHTML = `<p class="hint reply-legend"></p>
+      <div class="lbl" style="margin-top:8px">Opponent\u2019s best replies after this word · tap one to show it on the board</div>
+      <ol class="gr-list">${list.map((x, k) => `<li data-r="${k}" class="tap${x.reaches ? ' danger' : ''}"><b>${x.word}</b> — ${x.cut ? `cuts <b>✂${x.cut}</b> of your letters` : 'cuts none of yours'}${x.viaWhite ? ` (incl. capture tile${x.viaWhite > 1 ? 's' : ''})` : ''}, ends at <b>${letter(x)}</b> (${cellName(x.last)})${x.reaches ? ` · <b>🏁 reaches your base (${myBase} row)</b>` : x.depthGain ? ` · pushes ${x.depthGain} row${x.depthGain > 1 ? 's' : ''}` : ''}</li>`).join('')}</ol>`;
+    drawGridReply(0);
+  }
+  let grReplies = [];
+  // draw one of the opponent's replies on the preview board
+  function drawGridReply(k) {
+    const det = $('#results .detail'), x = grReplies[k];
+    if (!det || !x || !grOpen) return;
+    const oppOnly = det.classList.contains('opp-only');
+    const old = det.querySelector('.board.mini');
+    if (old) old.replaceWith(miniBoard(oppOnly ? { path: [], wild: [], word: '' } : grOpen, { path: x.path, cutCells: x.cutCells, last: x.last, alone: oppOnly }));
+    det.querySelectorAll('.gr-list li').forEach(li => li.classList.toggle('on', +li.dataset.r === k));
+    const lg = det.querySelector('.reply-legend');
+    if (lg) lg.innerHTML = `${oppOnly ? `After you play <b>${grOpen.word}</b>: ` : '<span style="color:#5ee37a">━ your word</span> · '}<span style="color:#ff6b5b">╍ reply ${k + 1}: ${x.word}</span> · ✂ = your letters it cuts (a capture tile on its path also takes the letters around it) · <b>end</b> = last letter it reaches`;
   }
 
   // ---------------- Invasion ----------------

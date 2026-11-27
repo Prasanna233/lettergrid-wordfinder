@@ -294,6 +294,25 @@ function lettersAfter(letters, move) {
   return L;
 }
 
+// Opponent replies are capped at 12 letters.
+const REPLY_MAX = 12;
+// My letters an opponent reply takes: my cells on its path, plus my cells next to any capture (white)
+// tile on its path, since a capture tile also takes all the cells around it.
+function cutCellsOf(path, st, myColor, rows, cols) {
+  const out = new Set();
+  for (const i of path) {
+    if (st[i] === myColor) out.add(i);
+    if (st[i] === 'W') {
+      const r = Math.floor(i / cols), c = i % cols;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue; const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < rows && cc >= 0 && cc < cols && st[rr * cols + cc] === myColor) out.add(rr * cols + cc);
+      }
+    }
+  }
+  return [...out];
+}
+
 // ---------- opponent replies (Invasion) ----------
 // For each of my candidate moves: play it on a copy of the board (my word's cells, and the neighbours of
 // any capture tile on it, become mine), then find the opponent's biggest single-word gain from there.
@@ -307,12 +326,12 @@ function replies(grid, moves, opts) {
     const path = mv.path || mv, st = grid.state.slice();
     for (const i of path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
     const exclude = (opts.exclude || []).concat(mv.word ? [mv.word] : []);
-    const r = solve({ rows, cols, letters: lettersAfter(grid.letters, mv), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false });
+    const r = solve({ rows, cols, letters: lettersAfter(grid.letters, mv), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, maxLen: Math.min(opts.maxLen || 20, REPLY_MAX), exclude, limit: 100000, wildFollowUp: false });
     let bestR = null;
     for (const x of r.results) if (!bestR || x.stolen > bestR.stolen || (x.stolen === bestR.stolen && x.len > bestR.len)) bestR = x;   // points = my letters they cut
     if (!bestR || !bestR.stolen) return { best: 0, word: '' };
     // which of my cells (after my word) their reply cuts, and where it ends
-    const cutCells = bestR.path.filter(i => st[i] === grid.myColor);
+    const cutCells = cutCellsOf(bestR.path, st, grid.myColor, rows, cols);
     return { best: bestR.stolen, word: bestR.word, path: bestR.path, wild: bestR.wild, cutCells, last: bestR.path[bestR.path.length - 1] };
   });
 }
@@ -329,13 +348,16 @@ function topReplies(grid, move, opts, n, rank) {
   const st = grid.state.slice();
   for (const i of move.path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
   const exclude = (opts.exclude || []).concat(move.word ? [move.word] : []);
-  const res = solve({ rows, cols, letters: lettersAfter(grid.letters, move), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, exclude, limit: 100000, wildFollowUp: false }).results;
+  const res = solve({ rows, cols, letters: lettersAfter(grid.letters, move), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, maxLen: Math.min(opts.maxLen || 20, REPLY_MAX), exclude, limit: 100000, wildFollowUp: false }).results;
   res.sort(rank === 'cut'
     ? (a, b) => b.stolen - a.stolen || b.len - a.len
     // race: replies that cut my letters come first, deepest push first; then the rest, deepest push first
     : (a, b) => ((b.stolen > 0) - (a.stolen > 0)) || b.depthGain - a.depthGain || (b.reaches - a.reaches) || b.stolen - a.stolen || b.len - a.len);
-  return res.slice(0, n).map(x => ({ word: x.word, path: x.path, wild: x.wild, reaches: !!x.reaches, depthGain: x.depthGain,
-    cut: x.path.filter(i => st[i] === grid.myColor).length, cutCells: x.path.filter(i => st[i] === grid.myColor), last: x.path[x.path.length - 1] }));
+  return res.slice(0, n).map(x => {
+    const cutCells = cutCellsOf(x.path, st, grid.myColor, rows, cols);
+    return { word: x.word, path: x.path, wild: x.wild, reaches: !!x.reaches, depthGain: x.depthGain,
+      cut: cutCells.length, cutCells, viaWhite: x.path.filter(i => st[i] === 'W').length, last: x.path[x.path.length - 1] };
+  });
 }
 
 if (typeof self !== 'undefined') self.onmessage = async (e) => {

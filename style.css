@@ -225,3 +225,5 @@ main[hidden], [hidden] { display: none !important; }
 #grRepSeg button { font-size: 13px; }
 .pz-mini .cell { cursor: pointer; }
 .pz-mini .cell.pz-start { box-shadow: inset 0 0 0 3px #3fae2a; background: #2c6e1f; border-radius: 50%; }
+.gr-list li.tap { cursor: pointer; padding: 4px 6px; margin-left: -6px; border-radius: 8px; border: 1px solid transparent; }
+.gr-list li.tap.on { border-color: #ff6b5b; background: rgba(255, 107, 91, .1); }
