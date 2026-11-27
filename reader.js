@@ -435,6 +435,8 @@
         if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         for (const k of [j - 1, j + 1, j - gw, j + gw]) if (k >= 0 && k < gw * gh && mask[k] && !lab[k] && Math.abs((k % gw) - x) <= 1) { lab[k] = nl; q[t++] = k; }
       }
+      // the letter box floats in the middle: skip grey areas that touch the screen edge (status bar, header)
+      if (x0 <= 1 || y0 <= 1 || x1 >= gw - 2 || y1 >= gh - 2) continue;
       if (!best || n > best.n) best = { n, x0, x1, y0, y1 };
     }
     if (!best || best.n < (gw * gh) * 0.03) return null;
