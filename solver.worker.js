@@ -112,6 +112,15 @@ function solve(grid, opts) {
     }
   }
 
+  // race boards: a captured cell that a cut has separated from its base is no longer a starting point,
+  // so starts only count my cells still connected (8 ways) to my home row
+  let linked = null;
+  if (opts.linkedStart) {
+    linked = new Uint8Array(n); const qq = []; 
+    for (let c = 0; c < cols; c++) { const i = myHomeRow * cols + c; if (mine[i]) { linked[i] = 1; qq.push(i); } }
+    for (let h = 0; h < qq.length; h++) for (const j of nbrs[qq[h]]) if (mine[j] && !linked[j]) { linked[j] = 1; qq.push(j); }
+  }
+  const mineStart = i => mine[i] && (!linked || linked[i]);
   const allowedStart = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     if (!letters[i] || !inSide[i]) continue;
@@ -123,11 +132,11 @@ function solve(grid, opts) {
     // opponent has captured (their home row doesn't count)
     else if (opts.start === 'frontier') {
       const oppCap = j => opp[j] && Math.floor(j / cols) !== oppHomeRow;
-      if (!mine[i] && !opp[i] && nbrs[i].some(j => mine[j]) && !nbrs[i].some(oppCap)) allowedStart[i] = 1;
+      if (!mine[i] && !opp[i] && nbrs[i].some(mineStart) && !nbrs[i].some(oppCap)) allowedStart[i] = 1;
     }
     else if (opts.start === 'opp') { if (opp[i]) allowedStart[i] = 1; }
-    else if (mine[i]) allowedStart[i] = 1;
-    else if (opts.start === 'adjacent' && nbrs[i].some(j => mine[j])) allowedStart[i] = 1;
+    else if (mineStart(i)) allowedStart[i] = 1;
+    else if (opts.start === 'adjacent' && !mine[i] && nbrs[i].some(mineStart)) allowedStart[i] = 1;
   }
 
   const minLen = opts.minLen || 4, maxLen = Math.min(opts.maxLen || 20, 20);
@@ -348,7 +357,7 @@ function topReplies(grid, move, opts, n, rank) {
   const st = grid.state.slice();
   for (const i of move.path) { if (grid.state[i] === 'W') for (const j of nb(i)) st[j] = grid.myColor; st[i] = grid.myColor; }
   const exclude = (opts.exclude || []).concat(move.word ? [move.word] : []);
-  const res = solve({ rows, cols, letters: lettersAfter(grid.letters, move), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, maxLen: Math.min(opts.maxLen || 20, REPLY_MAX), exclude, limit: 100000, wildFollowUp: false }).results;
+  const res = solve({ rows, cols, letters: lettersAfter(grid.letters, move), state: st, myColor: oppColor, myHome: oppHome }, { ...opts, maxLen: Math.min(opts.maxLen || 20, REPLY_MAX), linkedStart: rank !== 'cut', exclude, limit: 100000, wildFollowUp: false }).results;
   res.sort(rank === 'cut'
     ? (a, b) => b.stolen - a.stolen || b.len - a.len
     // race: replies that cut my letters come first, deepest push first; then the rest, deepest push first

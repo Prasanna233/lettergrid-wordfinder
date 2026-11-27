@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=45');
+  const worker = new Worker('solver.worker.js?v=46');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -365,7 +365,7 @@
     worker.postMessage({
       type: 'solve', id: 'wn' + (++wnId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: 4, maxLen: 20, start: 'frontier', limit: 200000, wildFollowUp: false },
+      opts: { minLen: 4, maxLen: 20, start: 'frontier', linkedStart: !isInvasion(), limit: 200000, wildFollowUp: false },
     });
   }
   let wnId = 0;
@@ -389,9 +389,9 @@
     const base = { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state };
     const lens = c => capturedBy(c) === 0 ? { minLen: 7, maxLen: 7 } : { minLen: 4, maxLen: 20 };
     worker.postMessage({ type: 'solve', id: 'wpme' + wpId, grid: { ...base, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { ...lens(grid.myColor), start: 'adjacent', limit: 100000, wildFollowUp: false } });
+      opts: { ...lens(grid.myColor), start: 'adjacent', linkedStart: !isInvasion(), limit: 100000, wildFollowUp: false } });
     worker.postMessage({ type: 'solve', id: 'wpop' + wpId, grid: { ...base, myColor: oppColor, myHome: oppHome },
-      opts: { ...lens(oppColor), start: 'adjacent', limit: 100000, wildFollowUp: false } });
+      opts: { ...lens(oppColor), start: 'adjacent', linkedStart: !isInvasion(), limit: 100000, wildFollowUp: false } });
   }
   // one side's outlook: can it win on its next word, and roughly how many of its turns until it reaches the base
   function outlook(m) {
@@ -707,7 +707,7 @@
     worker.postMessage({
       type: 'solve', id: solveId,
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: winList ? 4 : settings.minLen, maxLen: winList ? 20 : settings.maxLen, start: winList ? 'frontier' : settings.start, side: half(), limit: 20000 },
+      opts: { minLen: winList ? 4 : settings.minLen, maxLen: winList ? 20 : settings.maxLen, start: winList ? 'frontier' : settings.start, side: half(), linkedStart: !isInvasion(), limit: 20000 },
     });
   });
 
