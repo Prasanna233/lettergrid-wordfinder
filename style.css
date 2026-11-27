@@ -223,3 +223,5 @@ main[hidden], [hidden] { display: none !important; }
 .gr-list li.danger { color: #ff9a8d; }
 .gr-list li.danger b { color: #ffb3a8; }
 #grRepSeg button { font-size: 13px; }
+.pz-mini .cell { cursor: pointer; }
+.pz-mini .cell.pz-start { box-shadow: inset 0 0 0 3px #3fae2a; background: #2c6e1f; border-radius: 50%; }

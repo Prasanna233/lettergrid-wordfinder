@@ -18,7 +18,7 @@
   function saveSettings() { try { localStorage.setItem('gwf-settings', JSON.stringify(settings)); } catch (e) {} }
 
   // ---------------- dictionary worker ----------------
-  const worker = new Worker('solver.worker.js?v=42');
+  const worker = new Worker('solver.worker.js?v=43');
   let solveId = 0;
   worker.onmessage = e => {
     const m = e.data;
@@ -145,6 +145,9 @@
       const ctx = cv.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(img, 0, 0);
       const data = ctx.getImageData(0, 0, cv.width, cv.height);
+      // puzzle screen (small letter box, green starting letter, row of answer boxes)?
+      const pz = LGReader.readPuzzle ? LGReader.readPuzzle(data, templates) : null;
+      if (pz && pz.start >= 0 && pz.length > 0) return loadPuzzle(pz);
       const r = LGReader.readBoard(data, templates);
       const n = r.rows * r.cols;
       let who = whoAmI(r);
@@ -189,6 +192,22 @@
       showMsg((err && err.message ? err.message : String(err)) + ' You can type the grid manually instead.');
       if (!$('#puzzleView').hidden) $('#pzBoardInfo').textContent = (err && err.message ? err.message : String(err)) + ' Try another screenshot, or type the board in the Grid solver tab.';
     }
+  }
+  function loadPuzzle(pz) {
+    const n = pz.rows * pz.cols;
+    grid = {
+      rows: pz.rows, cols: pz.cols, mode: 'puzzle',
+      letters: pz.cells.map(c => c.letter), state: new Array(n).fill('.'), conf: pz.cells.map(c => c.conf),
+      topColor: 'O', myColor: 'O', myHome: 'bottom', header: null,
+      start: pz.start, pzLen: pz.length,
+    };
+    showMsg(`Read a puzzle: ${pz.cols}×${pz.rows} letters, start on ${grid.letters[pz.start]}, ${pz.length} letters. See the Puzzle solver tab.`);
+    settings.pzSrc = 'board'; settings.pzLen = pz.length; saveSettings();
+    $('#pzPrefix').value = ''; $('#pzPattern').value = '';
+    pzCache = null; pzSel = null;
+    afterGridLoaded();
+    syncSrc(); syncLen();
+    showTab('puzzle');
   }
   function fileToImage(file) {
     if (window.createImageBitmap) return createImageBitmap(file).catch(() => viaImg(file));
@@ -998,19 +1017,34 @@
   function pzBoardChanged() { pzCache = null; pzSel = null; if (!$('#puzzleView').hidden) { syncPzBoard(); runPuzzle(); } }
   function syncPzBoard() {
     if (pzSrc() !== 'board') return;
-    syncSide(); $('#pzSideSeg').parentElement.hidden = !grid;
+    const isPz = !!grid && grid.mode === 'puzzle';
+    syncSide(); $('#pzSideSeg').parentElement.hidden = !grid || isPz;
+    $('#pzHalfSeg').parentElement.hidden = isPz;
     $('#pzFileLbl').textContent = grid ? 'Change screenshot' : 'Add screenshot';
     const low = grid ? grid.conf.filter(c => c < 0.5).length : 0;
-    $('#pzBoardInfo').innerHTML = !grid ? 'Add a screenshot of the game. Words are traced through touching letters (diagonals too), each cell once.'
+    $('#pzBoardInfo').innerHTML = !grid ? 'Add a screenshot of the game or of a puzzle. Words are traced through touching letters (diagonals too), each cell once.'
+      : isPz ? `Puzzle ${grid.cols}×${grid.rows}${grid.start >= 0 ? `, starting on <b>${grid.letters[grid.start]}</b> (green)` : ', starting anywhere'}${grid.pzLen ? `, <b>${grid.pzLen}</b> letters` : ''}.${low ? ` <b>${low}</b> cell${low > 1 ? 's' : ''} may be misread.` : ''} Tap a letter on the board to change the start. <button type="button" class="linkbtn inline" id="pzEdit">Fix letters in Grid solver</button>`
       : `Board ${grid.cols}×${grid.rows}.${low ? ` <b>${low}</b> cell${low > 1 ? 's' : ''} may be misread.` : ''} <button type="button" class="linkbtn inline" id="pzEdit">Fix letters in Grid solver</button>`;
-    syncHeavyPz();
+    if (isPz) $('#pzHeavy').hidden = true; else syncHeavyPz();
     const v = $('#pzBoardView'); v.innerHTML = '';
     if (grid) {
-      v.appendChild(miniBoard(pzSel || { path: [], wild: [], word: '' }));
+      const mb = miniBoard(pzSel || { path: [], wild: [], word: '' });
+      if (isPz) {
+        mb.classList.add('pz-mini');
+        [...mb.children].forEach((d, i) => { if (d.classList.contains('cell')) { d.dataset.i = i; if (i === grid.start) d.classList.add('pz-start'); } });
+      }
+      v.appendChild(mb);
       if (pzSel) v.insertAdjacentHTML('beforeend', `<p class="hint pz-sel">Showing <b>${pzSel.word}</b> — tap another word, or tap it again to hide.</p>`);
     }
     const ed = $('#pzEdit'); if (ed) ed.addEventListener('click', () => showTab('grid'));
   }
+  $('#pzBoardView').addEventListener('click', e => {
+    if (!grid || grid.mode !== 'puzzle') return;
+    const d = e.target.closest('.cell[data-i]'); if (!d) return;
+    const i = +d.dataset.i; if (!grid.letters[i]) return;
+    grid.start = grid.start === i ? -1 : i; pzSel = null; pzCache = null;
+    syncPzBoard(); runPuzzle();
+  });
   function pzSolved(m) {
     pzCache = { key: pzPending, results: m.results };
     renderBoardWords();
@@ -1026,14 +1060,15 @@
     if (!dictReady) { $('#pzMsg').textContent = 'Loading dictionary…'; $('#pzMsg').hidden = false; return; }
     const b = pzBounds();
     if (b.conflict) { $('#pzTitle').textContent = '0 words'; $('#pzMsg').textContent = b.conflict; $('#pzMsg').hidden = false; $('#pzResults').innerHTML = ''; return; }
-    const key = `${grid.rows}x${grid.cols}|${grid.letters.join(',')}|${b.min}-${b.max}|${half()}`;
+    const isPz = grid.mode === 'puzzle', startCell = isPz && grid.start >= 0 ? grid.start : -1;
+    const key = `${grid.rows}x${grid.cols}|${grid.letters.join(',')}|${b.min}-${b.max}|${isPz ? 'pz' + startCell : half()}`;
     if (pzCache && pzCache.key === key) return renderBoardWords();
     pzPending = key;
     $('#pzMsg').textContent = 'Searching the board…'; $('#pzMsg').hidden = false;
     worker.postMessage({
       type: 'solve', id: 'pz' + (++pzId),
       grid: { rows: grid.rows, cols: grid.cols, letters: grid.letters, state: grid.state, myColor: grid.myColor, myHome: grid.myHome },
-      opts: { minLen: b.min, maxLen: b.max, start: 'anywhere', side: half(), limit: 100000 },
+      opts: { minLen: b.min, maxLen: b.max, start: 'anywhere', side: isPz ? 'both' : half(), startCell, limit: 100000 },
     });
   }
   let pzMap = new Map();
@@ -1046,7 +1081,7 @@
     pzMap = new Map(list.map(r => [r.word, r]));
     $('#pzTitle').textContent = `${list.length.toLocaleString()} word${list.length === 1 ? '' : 's'} on the board`;
     const shown = list.slice(0, 3000);
-    const msg = !list.length ? 'No words on this board match. Try another length or fewer starting letters.'
+    const msg = !list.length ? (grid.mode === 'puzzle' && grid.start >= 0 ? `No words of this length start on ${grid.letters[grid.start]}. Check the letters, or pick another length.` : 'No words on this board match. Try another length or fewer starting letters.')
       : list.length > shown.length ? `Showing the first ${shown.length.toLocaleString()} — add starting letters to narrow it down.` : 'Tap a word to see its path on the board.';
     $('#pzMsg').textContent = msg; $('#pzMsg').hidden = false;
     renderWordGroups(shown.map(r => r.word), prefix, true);

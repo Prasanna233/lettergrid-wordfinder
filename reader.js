@@ -415,7 +415,85 @@
     return { rows, cols, board, cells, topColor, myColor, header };
   }
 
-  const api = { readBoard, readHeader, sigDistance, countCols, homeBandHeight, bestRowCount, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
+  // ---------- puzzle screen: a small letter box, a green starting letter, and a row of answer boxes ----------
+  function isGreenMark(r, g, b) { return g > 95 && g - r > 45 && g - b > 45; }
+  function readPuzzle(img, templates) {
+    const { data, width: W, height: H } = img;
+    const px = (x, y) => { const p = (y * W + x) * 4; return [data[p], data[p + 1], data[p + 2]]; };
+    // 1. the letter box: the largest area of flat dark grey (about 30,30,30), sampled on a coarse grid
+    const S = 4, gw = Math.floor(W / S), gh = Math.floor(H / S);
+    const isCard = (x, y) => { const [r, g, b] = px(x, y); return Math.max(r, g, b) - Math.min(r, g, b) < 6 && r > 20 && r < 44; };
+    const mask = new Uint8Array(gw * gh), lab = new Int32Array(gw * gh);
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) mask[y * gw + x] = isCard(x * S, y * S) ? 1 : 0;
+    let best = null, nl = 0; const q = new Int32Array(gw * gh);
+    for (let i = 0; i < gw * gh; i++) {
+      if (!mask[i] || lab[i]) continue;
+      nl++; let h = 0, t = 0; q[t++] = i; lab[i] = nl;
+      let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1, n = 0;
+      while (h < t) {
+        const j = q[h++], x = j % gw, y = (j / gw) | 0; n++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (const k of [j - 1, j + 1, j - gw, j + gw]) if (k >= 0 && k < gw * gh && mask[k] && !lab[k] && Math.abs((k % gw) - x) <= 1) { lab[k] = nl; q[t++] = k; }
+      }
+      if (!best || n > best.n) best = { n, x0, x1, y0, y1 };
+    }
+    if (!best || best.n < (gw * gh) * 0.03) return null;
+    // fill ratio: a card is mostly grey (the letters are thin)
+    const L = best.x0 * S + S, R = best.x1 * S - 1, T = best.y0 * S + S, B = best.y1 * S - 1;
+    if (best.n < (best.x1 - best.x0 + 1) * (best.y1 - best.y0 + 1) * 0.5) return null;
+    // 2. letter positions: white ink projected on each axis
+    const light = (x, y) => { const [r, g, b] = px(x, y); return Math.min(r, g, b) > 170; };
+    const colInk = new Int32Array(R - L + 1), rowInk = new Int32Array(B - T + 1);
+    // skip a margin so the rounded light border never counts as ink
+    const mx = Math.round((R - L) * 0.03), my = Math.round((B - T) * 0.03);
+    for (let y = T + my; y <= B - my; y++) for (let x = L + mx; x <= R - mx; x++) if (light(x, y)) { colInk[x - L]++; rowInk[y - T]++; }
+    const runs = (arr, minGap) => {
+      const out = []; let s = -1, last = -1;
+      for (let i = 0; i < arr.length; i++) if (arr[i] > 1) { if (s < 0 || i - last > minGap) { if (s >= 0) out.push([s, last]); s = i; } last = i; }
+      if (s >= 0) out.push([s, last]);
+      return out.filter(r => r[1] - r[0] > 4);
+    };
+    const cr = runs(colInk, Math.max(6, (R - L) * 0.02)), rr = runs(rowInk, Math.max(6, (B - T) * 0.02));
+    if (cr.length < 2 || rr.length < 2 || cr.length > 8 || rr.length > 8) return null;
+    const edges = (rs, lo, n) => { const e = [lo]; for (let i = 1; i < rs.length; i++) e.push(lo + Math.round((rs[i - 1][1] + rs[i][0]) / 2)); e.push(lo + n); return e; };
+    const ex = edges(cr, L, R - L + 1), ey = edges(rr, T, B - T + 1);
+    const cols = cr.length, rows = rr.length;
+    // 3. read each letter; the cell with a green disc is the starting letter
+    const cells = []; let start = -1, bestGreen = 0;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x0 = ex[c], x1 = ex[c + 1], y0 = ey[r], y1 = ey[r + 1];
+      const a = analyseCell(img, x0, y0, x1, y1);
+      let letter = '', conf = 1;
+      if (a.wildcard) letter = '?';
+      else if (!a.empty && templates) { const k = classify(a, templates); letter = k.letter; conf = (k.dist > 9 || k.margin < 4) ? 0.3 : 1; }
+      let g = 0, n = 0;
+      for (let y = y0; y < y1; y += 3) for (let x = x0; x < x1; x += 3) { n++; if (isGreenMark(...px(x, y))) g++; }
+      if (g / n > 0.12 && g / n > bestGreen) { bestGreen = g / n; start = r * cols + c; }
+      cells.push({ letter, conf, _a: a });
+    }
+    // 4. answer length: the row of green outlined boxes above the letter box
+    let length = 0;
+    const greenRow = y => { let n = 0; for (let x = 0; x < W; x += 2) if (isGreenMark(...px(x, y))) n++; return n * 2; };
+    // horizontal green bands above the letter box; the answer boxes are a pair of thin bands
+    // (top and bottom edges) with green dividers between them, the pair closest to the letter box
+    const bands = []; let bs = -1;
+    for (let y = Math.max(0, T - Math.round(H * 0.4)); y < T - 4; y++) {
+      const on = greenRow(y) > W * 0.3;
+      if (on && bs < 0) bs = y;
+      if (!on && bs >= 0) { bands.push([bs, y - 1]); bs = -1; }
+    }
+    for (let i = bands.length - 1; i > 0 && !length; i--) {
+      const lo = bands[i - 1][1], hi = bands[i][0], gap = hi - lo;
+      if (gap < 30 || gap > W * 0.2) continue;
+      const yy = lo + Math.round(gap * 0.15);
+      let n = 0, inRun = false;
+      for (let x = 0; x < W; x++) { const g = isGreenMark(...px(x, yy)); if (g && !inRun) n++; inRun = g; }
+      if (n >= 3) length = n - 1;
+    }
+    return { rows, cols, cells, start, length, box: { left: L, right: R, top: T, bottom: B } };
+  }
+
+  const api = { readBoard, readPuzzle, readHeader, sigDistance, countCols, homeBandHeight, bestRowCount, findBoard, analyseCell, classify, decodeTemplates, encodeGlyph, G };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LGReader = api;
 })(typeof self !== 'undefined' ? self : this);
